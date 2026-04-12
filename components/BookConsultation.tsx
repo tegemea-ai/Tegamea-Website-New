@@ -1,71 +1,50 @@
 import React, { useEffect } from 'react';
 
-const EMBED_SCRIPT_SRC = 'https://bookings.nimbuspop.com/assets/embed.js';
-const BOOKING_EMBED_URL =
-  'https://abisola-tegemea.zohobookings.eu/portal-embed#/Virtual_Assistant_Consultation_Call';
-
 declare global {
   interface Window {
     Bookings?: {
-      inlineEmbed: (opts: { url: string; parent: string; height: string }) => void;
+      inlineEmbed: (options: { url: string; parent: string; height: string }) => void;
     };
   }
 }
 
-let embedScriptPromise: Promise<void> | null = null;
-
-function ensureEmbedScript(): Promise<void> {
-  if (typeof window === 'undefined') return Promise.resolve();
-  if (window.Bookings) return Promise.resolve();
-  if (!embedScriptPromise) {
-    embedScriptPromise = new Promise((resolve, reject) => {
-      const existing = document.querySelector<HTMLScriptElement>(
-        `script[src="${EMBED_SCRIPT_SRC}"]`
-      );
-      if (existing) {
-        const done = () => resolve();
-        if (window.Bookings) {
-          done();
-          return;
-        }
-        existing.addEventListener('load', done, { once: true });
-        existing.addEventListener('error', () => reject(new Error('Failed to load booking embed')), {
-          once: true,
-        });
-        return;
-      }
-      const script = document.createElement('script');
-      script.src = EMBED_SCRIPT_SRC;
-      script.async = true;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Failed to load booking embed'));
-      document.body.appendChild(script);
-    });
-  }
-  return embedScriptPromise;
-}
+const BOOKINGS_EMBED_SCRIPT_SRC = 'https://bookings.nimbuspop.com/assets/embed.js';
+const BOOKINGS_EMBED_SCRIPT_ID = 'tegemea-bookings-nimbuspop-embed';
+const INLINE_CONTAINER_ID = 'inline-container';
 
 const BookConsultation: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
 
-    ensureEmbedScript()
-      .then(() => {
-        if (cancelled || !window.Bookings?.inlineEmbed) return;
-        window.Bookings.inlineEmbed({
-          url: BOOKING_EMBED_URL,
-          parent: '#inline-container',
-          height: '600px',
-        });
-      })
-      .catch(() => {
-        /* embed optional; page still usable */
+    const initEmbed = () => {
+      if (cancelled || !window.Bookings?.inlineEmbed) return;
+      window.Bookings.inlineEmbed({
+        url: 'https://abisola-tegemea.zohobookings.eu/portal-embed#/Virtual_Assistant_Consultation_Call',
+        parent: `#${INLINE_CONTAINER_ID}`,
+        height: '600px',
       });
+    };
+
+    const existing = document.getElementById(BOOKINGS_EMBED_SCRIPT_ID) as HTMLScriptElement | null;
+
+    if (existing) {
+      if (window.Bookings?.inlineEmbed) {
+        initEmbed();
+      } else {
+        existing.addEventListener('load', initEmbed, { once: true });
+      }
+    } else {
+      const script = document.createElement('script');
+      script.id = BOOKINGS_EMBED_SCRIPT_ID;
+      script.src = BOOKINGS_EMBED_SCRIPT_SRC;
+      script.async = true;
+      script.onload = () => initEmbed();
+      document.body.appendChild(script);
+    }
 
     return () => {
       cancelled = true;
-      const el = document.getElementById('inline-container');
-      if (el) el.innerHTML = '';
+      document.getElementById(INLINE_CONTAINER_ID)?.replaceChildren();
     };
   }, []);
   return (
@@ -135,18 +114,17 @@ const BookConsultation: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-12 mb-8">
-            <h2 className="text-2xl font-serif text-brand-navy mb-6 text-center">Schedule online</h2>
-            <div
-              id="inline-container"
-              className="w-full min-h-[600px] rounded-lg border border-brand-sand/60 bg-white overflow-hidden"
-            />
+          <div className="mt-12 border border-brand-sand/60 rounded-sm overflow-hidden bg-white shadow-sm">
+            <div id={INLINE_CONTAINER_ID} className="w-full min-h-[600px]" />
           </div>
 
           <div className="mt-12 text-center">
-             <p className="text-brand-stone text-xs font-light">
-               To arrange a consultation, email us at <a href="mailto:info@tegemea.com" className="text-brand-gold font-medium hover:underline">info@tegemea.com</a>
-             </p>
+            <p className="text-brand-stone text-xs font-light">
+              Prefer email? Contact us at{' '}
+              <a href="mailto:info@tegemea.com" className="text-brand-gold font-medium hover:underline">
+                info@tegemea.com
+              </a>
+            </p>
           </div>
         </div>
       </section>
