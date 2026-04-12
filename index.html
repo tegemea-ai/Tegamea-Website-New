@@ -1,0 +1,82 @@
+
+<!DOCTYPE html>
+<html lang="en-GB">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Primary Meta Tags -->
+    <title>Tegemea | Elite UK Virtual Assistant & Strategic Operational Support</title>
+    <meta name="title" content="Tegemea | Elite UK Virtual Assistant & Strategic Operational Support" />
+    <meta name="description" content="Premium, UK-based virtual assistant and operational management for elite founders and professional services. London-vetted talent, strategic discretion, and flawless execution." />
+    <meta name="keywords" content="virtual assistant UK, executive assistant london, operational support founders, premium VA services, business management UK, strategic VA" />
+    <link rel="canonical" href="https://tegemea.co.uk" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://tegemea.co.uk" />
+    <meta property="og:title" content="Tegemea | Elite UK Virtual Assistant Support" />
+    <meta property="og:description" content="Strategic operational support for leaders who value precision and trust. UK-based, London-vetted virtual assistants." />
+    <meta property="og:image" content="/logo.png" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://tegemea.co.uk" />
+    <meta property="twitter:title" content="Tegemea | Elite UK Virtual Assistant Support" />
+    <meta property="twitter:description" content="Strategic operational support for leaders who value precision and trust." />
+    <meta property="twitter:image" content="/logo.png" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                navy: '#0F172A',
+                charcoal: '#1E293B',
+                gold: '#C5A059',
+                sand: '#F5F2ED',
+                stone: '#71717A'
+              }
+            },
+            fontFamily: {
+              serif: ['Playfair Display', 'serif'],
+              sans: ['Inter', 'sans-serif']
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        background-color: #FDFCFB;
+        color: #0F172A;
+        margin: 0;
+      }
+      .fade-in {
+        animation: fadeIn 1s ease-out;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      #root {
+        min-height: 100vh;
+      }
+      .selection\:bg-brand-gold\/20 ::selection {
+        background-color: rgba(197, 160, 89, 0.2);
+      }
+    </style>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="index.tsx"></script>
+  </body>
+</html>
