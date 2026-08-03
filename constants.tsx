@@ -33,8 +33,8 @@ export const PACKAGES: ServicePackage[] = [
   {
     id: 'core',
     name: 'Core Retainer',
-    hoursPerMonth: '20 – 40 hours',
-    rate: '£35 per hour',
+    hoursPerMonth: '5 – 10 hours per week',
+    rate: '£33 + VAT per hour',
     validity: 'Flexible over 8 weeks',
     minTerm: '6 months',
     description: 'A flexible retainer designed for small-to-medium businesses that need regular, dependable support without overcommitting hours.',
@@ -48,8 +48,8 @@ export const PACKAGES: ServicePackage[] = [
   {
     id: 'growth',
     name: 'Growth Retainer',
-    hoursPerMonth: '60 – 80 hours',
-    rate: '£33 per hour',
+    hoursPerMonth: '15 – 20 hours per week',
+    rate: '£30 + VAT per hour',
     validity: 'Monthly allocation',
     minTerm: '6 months',
     description: 'Designed for established businesses that require consistent, hands-on support and a higher level of ownership across operations.',
@@ -63,8 +63,8 @@ export const PACKAGES: ServicePackage[] = [
   {
     id: 'partnership',
     name: 'Partnership Retainer',
-    hoursPerMonth: '100+ hours',
-    rate: '£30 per hour',
+    hoursPerMonth: '25+ hours per week',
+    rate: '£28 + VAT per hour',
     validity: 'Monthly allocation',
     minTerm: '6 months',
     description: 'Built for long-term, high-volume partnerships where Tegemea becomes a deeply embedded support function within your business.',
@@ -78,7 +78,7 @@ export const PACKAGES: ServicePackage[] = [
   {
     id: 'bespoke',
     name: 'Bespoke Team Support',
-    hoursPerMonth: '150+ hours',
+    hoursPerMonth: 'Custom allocation',
     rate: 'Bespoke Pricing',
     validity: 'Custom Engagement',
     minTerm: 'Custom',
