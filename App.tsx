@@ -11,7 +11,8 @@ import BookConsultation from './components/BookConsultation';
 import Footer from './components/Footer';
 import HowItWorks from './components/HowItWorks';
 import Blog from './components/Blog';
-import Testimonials from './components/Testimonials';
+// Temporarily hidden from homepage — restore when ready
+// import Testimonials from './components/Testimonials';
 
 /**
  * Scroll to top on route change
@@ -98,7 +99,7 @@ const HomePage: React.FC = () => {
         </div>
       </section>
 
-      <Testimonials />
+      {/* <Testimonials /> */}
 
       <HowItWorks />
       
