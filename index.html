@@ -6,10 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
     <!-- Primary Meta Tags -->
-    <title>Tegemea | Elite UK Virtual Assistant & Strategic Operational Support</title>
-    <meta name="title" content="Tegemea | Elite UK Virtual Assistant & Strategic Operational Support" />
-    <meta name="description" content="Premium, UK-based virtual assistant and operational management for elite founders and professional services. London-vetted talent, strategic discretion, and flawless execution." />
-    <meta name="keywords" content="virtual assistant UK, executive assistant london, operational support founders, premium VA services, business management UK, strategic VA" />
+    <title>Tegemea | Executive, Project & Operational Support</title>
+    <meta name="title" content="Tegemea | Executive, Project & Operational Support" />
+    <meta name="description" content="Experienced UK-based Executive Assistants, Project Support professionals and Operational Coordinators — through flexible remote support or permanent recruitment." />
+    <meta name="keywords" content="executive assistant UK, project support, operational coordinator, remote support, permanent recruitment, professional services UK" />
     <link rel="canonical" href="https://tegemea.co.uk" />
 
     <!-- Open Graph / Facebook -->
@@ -66,6 +66,84 @@
       @keyframes fadeIn {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
+      }
+      .fade-up {
+        animation: fadeUp 0.9s ease-out both;
+      }
+      .fade-up-delay-1 { animation-delay: 0.12s; }
+      .fade-up-delay-2 { animation-delay: 0.24s; }
+      .fade-up-delay-3 { animation-delay: 0.36s; }
+      .fade-up-delay-4 { animation-delay: 0.48s; }
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(18px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .image-reveal {
+        animation: imageReveal 1.2s ease-out both;
+      }
+      @keyframes imageReveal {
+        from { opacity: 0; transform: scale(1.04); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      .ken-burns {
+        animation: kenBurns 18s ease-out forwards;
+      }
+      @keyframes kenBurns {
+        from { transform: scale(1); }
+        to { transform: scale(1.08); }
+      }
+      .stagger-in > * {
+        opacity: 0;
+        animation: fadeUp 0.7s ease-out forwards;
+      }
+      .stagger-in > *:nth-child(1) { animation-delay: 0.05s; }
+      .stagger-in > *:nth-child(2) { animation-delay: 0.12s; }
+      .stagger-in > *:nth-child(3) { animation-delay: 0.19s; }
+      .stagger-in > *:nth-child(4) { animation-delay: 0.26s; }
+      .stagger-in > *:nth-child(5) { animation-delay: 0.33s; }
+      .stagger-in > *:nth-child(6) { animation-delay: 0.4s; }
+      .panel-slide {
+        animation: panelSlide 0.8s ease-out both;
+      }
+      @keyframes panelSlide {
+        from { opacity: 0; transform: translateX(-16px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+      .tab-crossfade {
+        animation: tabCrossfade 0.35s ease-out;
+      }
+      @keyframes tabCrossfade {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .step-active {
+        background-color: #0F172A !important;
+        color: #fff !important;
+      }
+      .tools-marquee {
+        overflow: hidden;
+        white-space: nowrap;
+      }
+      .tools-marquee-track {
+        display: inline-flex;
+        align-items: center;
+        gap: 3.5rem;
+        animation: toolsMarquee 28s linear infinite;
+        will-change: transform;
+      }
+      .tools-marquee:hover .tools-marquee-track {
+        animation-play-state: paused;
+      }
+      @keyframes toolsMarquee {
+        from { transform: translateX(0); }
+        to { transform: translateX(-50%); }
+      }
+      .step-active h3,
+      .step-active span {
+        color: #fff !important;
+      }
+      .step-active p {
+        color: rgba(255,255,255,0.6) !important;
       }
       #root {
         min-height: 100vh;
