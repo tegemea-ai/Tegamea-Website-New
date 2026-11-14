@@ -7,7 +7,7 @@ export function loadSession(): AssessmentSession | null {
     const raw = sessionStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as AssessmentSession;
-    if (parsed?.version !== 1 || !Array.isArray(parsed.messages)) return null;
+    if (parsed?.version !== 2 || !Array.isArray(parsed.messages)) return null;
     return parsed;
   } catch {
     return null;

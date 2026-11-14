@@ -1,5 +1,23 @@
 export type FactSource = 'explicit' | 'inferred' | 'provisional' | 'unknown';
 export type Confidence = 'high' | 'medium' | 'low' | 'none';
+export type WorkingTimeUnit = 'day' | 'week';
+
+/**
+ * Active working time, kept in the unit the visitor used.
+ * A weekly total is stored only when they stated a week, or stated a day and the number of days.
+ */
+export interface ActiveWorkingTime {
+  stated: string;
+  amount: number;
+  amountTo: number | null;
+  unit: WorkingTimeUnit;
+  /** False when a bare number was taken as weekly because the question asked about a normal week. */
+  unitStated: boolean;
+  daysPerWeek: number | null;
+  weeklyHours: number | null;
+  weeklyHoursTo: number | null;
+  needsClarification: boolean;
+}
 
 /** A single captured value. Unknown stays null and is never filled with a guess. */
 export interface Fact<T> {
@@ -63,7 +81,7 @@ export interface AssessmentRecord {
     notes: Fact<string[]>;
   };
   workload: {
-    activeTime: Fact<string>;
+    activeTime: Fact<ActiveWorkingTime>;
     pattern: Fact<string>;
     peak: Fact<string>;
     uncertainty: Fact<string>;
@@ -96,7 +114,7 @@ export interface AssessmentRecord {
 }
 
 export interface AssessmentSession {
-  version: 1;
+  version: 2;
   openingNote: string;
   messages: ChatMessage[];
   record: AssessmentRecord;
@@ -108,7 +126,7 @@ export interface AssessmentSession {
 export interface ReviewItem {
   label: string;
   detail: string;
-  kind: 'confirmed' | 'words' | 'unknown' | 'skipped';
+  kind: 'confirmed' | 'derived' | 'words' | 'unknown' | 'skipped';
 }
 
 export interface ReviewSection {
@@ -122,6 +140,10 @@ export function unknownFact<T>(): Fact<T> {
 
 export function explicitFact<T>(value: T, evidence: string, revised = false): Fact<T> {
   return { value, source: 'explicit', confidence: 'high', evidence, revised };
+}
+
+export function inferredFact<T>(value: T, evidence: string, revised = false): Fact<T> {
+  return { value, source: 'inferred', confidence: 'medium', evidence, revised };
 }
 
 export function createEmptyRecord(): AssessmentRecord {

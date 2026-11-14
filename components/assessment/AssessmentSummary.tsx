@@ -4,6 +4,7 @@ import type { AssessmentRecord, ReviewItem } from '../../assessment/types';
 
 const kindStyle: Record<ReviewItem['kind'], string> = {
   confirmed: 'border-brand-gold bg-white',
+  derived: 'border-brand-gold/50 bg-white',
   words: 'border-brand-navy/10 bg-white',
   unknown: 'border-dashed border-brand-navy/20 bg-transparent',
   skipped: 'border-dashed border-brand-navy/20 bg-transparent',
@@ -19,9 +20,9 @@ const AssessmentSummary: React.FC<{ record: AssessmentRecord }> = ({ record }) =
         Your requirements so far
       </h2>
       <p className="text-sm text-brand-charcoal/70 font-light leading-relaxed mb-6">
-        This is a record of what you said. It is not a staffing recommendation, a workload calculation, or a price.
-        Confirmed details are only those that could be read directly from your answers. Anything not stated is marked
-        as not confirmed.
+        This is a record of what you said. It is not a staffing recommendation or a price. A weekly total is shown
+        only when you gave one, or when you gave both a daily figure and the number of days. Anything not stated is
+        marked as not confirmed.
       </p>
       <div className="space-y-6">
         {sections.map((section) => (

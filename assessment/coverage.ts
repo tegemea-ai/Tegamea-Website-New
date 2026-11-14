@@ -1,4 +1,5 @@
 import type { AssessmentRecord, ProgressStage, ReviewSection, TopicId } from './types';
+import { calculatedWeeklyDetail, statedWorkingTimeDetail } from './workingTime';
 
 export const PROGRESS_LABEL: Record<ProgressStage, string> = {
   business: 'Understanding your business',
@@ -12,6 +13,7 @@ const QUESTION_STAGE: Record<string, ProgressStage> = {
   business: 'business',
   support: 'business',
   workload: 'workload',
+  schedule: 'workload',
   availability: 'availability',
   staffing: 'preferences',
   process: 'review',
@@ -31,10 +33,15 @@ export function hasSupportSignal(record: AssessmentRecord): boolean {
   return record.executive.mentioned || record.project.mentioned || record.operations.mentioned;
 }
 
-/** Topics still worth asking. Each question is asked at most once. */
+export function hasProcessAnswer(record: AssessmentRecord): boolean {
+  return Boolean(record.process.manualWork.value || record.process.automation.value);
+}
+
+/** Next useful question. A question is asked again only when a correction leaves an essential gap. */
 export function nextQuestionId(record: AssessmentRecord, asked: string[]): string | null {
   const seen = new Set(asked);
   if (!hasBusinessNarrative(record) && !seen.has('business')) return 'business';
+  if (record.workload.activeTime.value?.needsClarification && !seen.has('schedule')) return 'schedule';
   if (!hasSupportSignal(record) && !seen.has('support')) return 'support';
   if (!record.workload.activeTime.value && !record.workload.uncertainty.value && !seen.has('workload')) {
     return 'workload';
@@ -42,7 +49,7 @@ export function nextQuestionId(record: AssessmentRecord, asked: string[]): strin
   if (!record.availability.window.value && !seen.has('availability')) return 'availability';
   const staffingOpen = !record.staffing.model.value || !record.staffing.location.value;
   if (staffingOpen && !seen.has('staffing')) return 'staffing';
-  if (!seen.has('process')) return 'process';
+  if (!hasProcessAnswer(record) && !seen.has('process')) return 'process';
   if (!seen.has('close')) return 'close';
   return null;
 }
@@ -54,6 +61,38 @@ function words(topic: TopicId, record: AssessmentRecord): string[] {
 function confirmed(label: string, detail: string | null | undefined): ReviewSection['items'] {
   if (!detail) return [];
   return [{ label, detail, kind: 'confirmed' }];
+}
+
+function workloadTimeItems(record: AssessmentRecord): ReviewSection['items'] {
+  const time = record.workload.activeTime.value;
+  if (!time) {
+    return [
+      {
+        label: 'Active working time',
+        detail: record.workload.uncertainty.value ?? 'Not confirmed. No working-time figure was given.',
+        kind: 'unknown',
+      },
+    ];
+  }
+
+  const items: ReviewSection['items'] = [
+    {
+      label: 'Active working time',
+      detail: statedWorkingTimeDetail(time, Boolean(record.workload.activeTime.revised)),
+      kind: 'confirmed',
+    },
+  ];
+  const calculated = calculatedWeeklyDetail(time);
+  if (calculated) {
+    items.push({ label: 'Weekly total, calculated', detail: calculated, kind: 'derived' });
+  } else if (time.unit === 'day') {
+    items.push({
+      label: 'Weekly total',
+      detail: 'Not confirmed. The number of working days was not given, so the daily figure has not been converted.',
+      kind: 'unknown',
+    });
+  }
+  return items;
 }
 
 export function buildReview(record: AssessmentRecord): ReviewSection[] {
@@ -108,15 +147,7 @@ export function buildReview(record: AssessmentRecord): ReviewSection[] {
   sections.push({
     title: 'Workload',
     items: [
-      ...(record.workload.activeTime.value
-        ? confirmed('Active working time', record.workload.activeTime.value + (record.workload.activeTime.revised ? ' (updated)' : ''))
-        : [
-            {
-              label: 'Active working time',
-              detail: record.workload.uncertainty.value ?? 'Not confirmed. No working-time figure was given.',
-              kind: 'unknown' as const,
-            },
-          ]),
+      ...workloadTimeItems(record),
       ...confirmed('Pattern', record.workload.pattern.value),
       ...confirmed('Peaks', record.workload.peak.value),
       ...words('workload', record).map((text) => ({ label: 'In your words', detail: text, kind: 'words' as const })),

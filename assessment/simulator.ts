@@ -2,6 +2,7 @@ import { hasBusinessNarrative, nextQuestionId } from './coverage';
 import {
   createEmptyRecord,
   explicitFact,
+  inferredFact,
   type AssessmentRecord,
   type AssessmentSession,
   type ChatMessage,
@@ -9,11 +10,20 @@ import {
   type TopicId,
   type WorkLocation,
 } from './types';
+import {
+  acknowledgeWorkingTime,
+  readWorkingTime,
+  scheduleNeedsAnotherAsk,
+  statedUnitCorrection,
+  workingTimeChanged,
+} from './workingTime';
 
 /**
  * Phase 2 guided conversation.
  * Phase 3 should replace `interpret` with Gemini. This file must not call an API,
  * invent workload figures, or recommend a staffing model.
+ * Daily hours stay in days until the visitor gives the number of working days.
+ * Availability is never copied across to fill that gap.
  */
 
 const WELCOME =
@@ -34,7 +44,7 @@ const QUESTIONS: Record<string, { topic: TopicId; text: (record: AssessmentRecor
   availability: {
     topic: 'availability',
     text: () =>
-      'Separately from those working hours, when would someone need to be available? A business can have 10 hours of work and still need someone reachable across the week.',
+      'Separately from those working hours, when would someone need to be available? A modest amount of work can still need someone reachable across the week.',
   },
   staffing: {
     topic: 'staffing',
@@ -48,10 +58,17 @@ const QUESTIONS: Record<string, { topic: TopicId; text: (record: AssessmentRecor
       return 'Are you leaning towards outsourced support, hiring someone into the business, or are you still comparing the two? And would they work remotely, on site, or a mix?';
     },
   },
+  schedule: {
+    topic: 'workload',
+    text: (record) => {
+      const stated = record.workload.activeTime.value?.stated ?? 'those daily hours';
+      return `You've described ${stated}. How many days a week does that apply to? I will not assume a five-day week.`;
+    },
+  },
   process: {
     topic: 'process',
     text: () =>
-      'Are there tasks that feel manual or duplicated, and might be improved in a system rather than by adding a person? You can skip this.',
+      'Are there any tasks your team spends time repeating that you think could be made easier with better systems or automation? For example, copying information between spreadsheets, manually sending reminders or entering the same details into different systems. You can skip this.',
   },
   close: {
     topic: 'review',
@@ -67,7 +84,7 @@ export function createSession(openingNote: string | null): AssessmentSession {
   const opening = openingNote?.trim() ?? '';
   if (!opening) {
     return {
-      version: 1,
+      version: 2,
       openingNote: '',
       messages: [{ id: 'm1', role: 'assistant', text: WELCOME }],
       record,
@@ -77,14 +94,14 @@ export function createSession(openingNote: string | null): AssessmentSession {
     };
   }
 
-  const seeded = interpret(record, opening, 'business');
+  const seeded = interpret(record, opening, 'business', 'business');
   const pending = nextQuestionId(seeded, ['business']);
   const acknowledgement = acknowledge(record, seeded) || "I'll start from what you've written.";
   const followUp = pending ? QUESTIONS[pending].text(seeded) : COMPLETION;
   const assistant = [acknowledgement, followUp].filter(Boolean).join(' ');
 
   return {
-    version: 1,
+    version: 2,
     openingNote: opening,
     messages: [
       { id: 'm1', role: 'visitor', text: opening },
@@ -103,20 +120,19 @@ export function replyTo(session: AssessmentSession, rawText: string): Assessment
 
   const visitor: ChatMessage = { id: nextMessageId(session.messages), role: 'visitor', text };
   const before = session.record;
-  const interpreted = interpret(before, text, QUESTIONS[session.pending].topic);
   const pendingId = session.pending;
+  const interpreted = interpret(before, text, QUESTIONS[pendingId].topic, pendingId);
+  const hoursChanged = workingTimeChanged(before.workload.activeTime.value, interpreted.workload.activeTime.value);
+  const processAnswered = hasProcessContent(text) || isDecline(text);
+  const processWasOnlyACorrection = pendingId === 'process' && hoursChanged && !processAnswered;
 
+  if (hoursChanged) {
+    const latest = interpreted.statements[interpreted.statements.length - 1];
+    if (latest && !(pendingId === 'process' && hasProcessContent(text))) latest.topic = 'workload';
+  }
   if ((pendingId === 'process' || pendingId === 'close') && isDecline(text)) {
     interpreted.statements = interpreted.statements.slice(0, -1);
     if (pendingId === 'process') interpreted.process.skipped = true;
-  } else if (
-    pendingId === 'process' &&
-    !hasProcessContent(text) &&
-    interpreted.workload.activeTime.value !== before.workload.activeTime.value
-  ) {
-    const latest = interpreted.statements[interpreted.statements.length - 1];
-    if (latest) latest.topic = 'workload';
-    interpreted.process.skipped = true;
   }
   if (pendingId === 'workload' && isUnsure(text) && !interpreted.workload.activeTime.value) {
     interpreted.workload.uncertainty = explicitFact('You said a working-time figure is not known yet.', text);
@@ -128,9 +144,23 @@ export function replyTo(session: AssessmentSession, rawText: string): Assessment
     interpreted.staffing.location = explicitFact('hybrid', text);
   }
 
-  const asked = session.asked.includes(pendingId) ? session.asked : [...session.asked, pendingId];
-  const finishing = pendingId === 'close';
-  const next = finishing ? null : nextQuestionId(interpreted, asked);
+  let asked = session.asked.includes(pendingId) ? session.asked : [...session.asked, pendingId];
+  if (processWasOnlyACorrection) asked = asked.filter((id) => id !== 'process');
+  if (
+    statedUnitCorrection(text) &&
+    pendingId !== 'workload' &&
+    pendingId !== 'schedule' &&
+    pendingId !== 'close'
+  ) {
+    asked = asked.filter((id) => id !== pendingId);
+  }
+  if (scheduleNeedsAnotherAsk(before.workload.activeTime.value, interpreted.workload.activeTime.value)) {
+    asked = asked.filter((id) => id !== 'schedule');
+  }
+  const closingWithoutANewGap =
+    pendingId === 'close' &&
+    !scheduleNeedsAnotherAsk(before.workload.activeTime.value, interpreted.workload.activeTime.value);
+  const next = closingWithoutANewGap ? null : nextQuestionId(interpreted, asked);
   const acknowledgement = acknowledge(before, interpreted, text, pendingId);
   const followUp = next ? QUESTIONS[next].text(interpreted) : COMPLETION;
   const assistantText = [acknowledgement, followUp].filter(Boolean).join(' ');
@@ -145,17 +175,17 @@ export function replyTo(session: AssessmentSession, rawText: string): Assessment
   };
 }
 
-function interpret(record: AssessmentRecord, text: string, topic: TopicId): AssessmentRecord {
+function interpret(record: AssessmentRecord, text: string, topic: TopicId, questionId: string): AssessmentRecord {
   const next = cloneRecord(record);
   next.statements = [
     ...next.statements,
     { id: `s${next.statements.length + 1}`, topic, text, source: 'explicit', confidence: 'high' },
   ];
-  applySignals(next, text);
+  applySignals(next, text, topic, questionId);
   return next;
 }
 
-function applySignals(record: AssessmentRecord, text: string): void {
+function applySignals(record: AssessmentRecord, text: string, topic: TopicId, questionId: string): void {
   const executive = matchLabels(text, EXECUTIVE_SIGNALS);
   if (executive.length) {
     record.executive.mentioned = true;
@@ -185,10 +215,12 @@ function applySignals(record: AssessmentRecord, text: string): void {
   const size = matchSize(text);
   if (size) record.business.size = explicitFact(size, text, Boolean(record.business.size.value));
 
-  const activeTime = matchActiveTime(text);
+  const activeTime = readWorkingTime(text, topic, record.workload.activeTime.value, questionId);
   if (activeTime) {
-    const revised = Boolean(record.workload.activeTime.value && record.workload.activeTime.value !== activeTime);
-    record.workload.activeTime = explicitFact(activeTime, text, revised);
+    const revised = workingTimeChanged(record.workload.activeTime.value, activeTime) && record.workload.activeTime.value != null;
+    record.workload.activeTime = activeTime.unitStated
+      ? explicitFact(activeTime, text, revised)
+      : inferredFact(activeTime, text, revised);
     record.workload.uncertainty = { value: null, source: 'unknown', confidence: 'none' };
   }
 
@@ -203,7 +235,9 @@ function applySignals(record: AssessmentRecord, text: string): void {
   }
 
   const days = matchWorkingDays(text);
-  if (days) record.availability.workingDays = explicitFact(days, text, Boolean(record.availability.workingDays.value));
+  if (days && questionId !== 'schedule') {
+    record.availability.workingDays = explicitFact(days, text, Boolean(record.availability.workingDays.value));
+  }
 
   const window = matchAvailabilityWindow(text);
   if (window) record.availability.window = explicitFact(window, text, Boolean(record.availability.window.value));
@@ -233,8 +267,11 @@ function applySignals(record: AssessmentRecord, text: string): void {
 
   const systems = matchLabels(text, SYSTEM_SIGNALS);
   if (systems.length) record.process.systems = mergeLabels(record.process.systems.value, systems, text);
-  if (/\b(manual|duplicat\w*|copy(?:ing)? and past\w*|spreadsheet)\b/i.test(text)) {
-    record.process.manualWork = explicitFact('You described manual or duplicated work.', text);
+  if (/\b(manual\w*|duplicat\w*|copy(?:ing)? and past\w*|copying information|spreadsheets?)\b/i.test(text)) {
+    record.process.manualWork = explicitFact('You described manual or duplicated work.', text, Boolean(record.process.manualWork.value));
+  }
+  if (/\bautomat\w*\b/i.test(text)) {
+    record.process.automation = explicitFact('You mentioned automation.', text, Boolean(record.process.automation.value));
   }
 }
 
@@ -244,12 +281,8 @@ function acknowledge(before: AssessmentRecord, after: AssessmentRecord, text = '
   }
 
   const notes: string[] = [];
-  if (after.workload.activeTime.value && after.workload.activeTime.value !== before.workload.activeTime.value) {
-    notes.push(
-      after.workload.activeTime.revised
-        ? `I've updated the active working time to ${after.workload.activeTime.value}.`
-        : `I've noted ${after.workload.activeTime.value} of active work.`,
-    );
+  if (workingTimeChanged(before.workload.activeTime.value, after.workload.activeTime.value) && after.workload.activeTime.value) {
+    notes.push(acknowledgeWorkingTime(before.workload.activeTime.value, after.workload.activeTime.value));
   } else if (pending === 'workload' && after.workload.uncertainty.value && !before.workload.uncertainty.value) {
     notes.push("I've left the working time blank, because a figure was not given.");
   }
@@ -273,7 +306,7 @@ function acknowledge(before: AssessmentRecord, after: AssessmentRecord, text = '
 
   if (notes.length === 0) {
     if (!hasBusinessNarrative(before) && hasBusinessNarrative(after)) return "I'll start from what you've described.";
-    return "I've kept that as you described it.";
+    return "I've recorded that in your words.";
   }
   return notes.slice(0, 2).join(' ');
 }
@@ -295,21 +328,6 @@ function joinLabels(labels: string[]): string {
   const readable = labels.map((label) => label.toLowerCase());
   if (readable.length === 1) return readable[0];
   return `${readable.slice(0, -1).join(', ')} and ${readable[readable.length - 1]}`;
-}
-
-function matchActiveTime(text: string): string | null {
-  const range = text.match(
-    /\b(\d{1,2})\s*(?:-|–|to)\s*(\d{1,2})\s*hours?(?:\s*(?:a|per|each)\s*week)?\b/i,
-  );
-  const single = text.match(/\b(\d{1,2})\s*hours?(?:\s*(?:a|per|each)\s*week)?\b/i);
-  const match = range ?? single;
-  if (!match) return null;
-  const clause = clauseAround(text, match.index ?? 0);
-  const aboutAvailability = /\b(available|availability|reachable|on hand|cover(?:ing)?|in the office)\b/i.test(clause);
-  const aboutWork = /\b(work|tasks?|spend|spending|takes|taking|admin|doing)\b/i.test(clause);
-  if (aboutAvailability && !aboutWork) return null;
-  if (range) return `${range[1]}–${range[2]} hours a week`;
-  return `${single![1]} hours a week`;
 }
 
 function matchAvailabilityWindow(text: string): string | null {
@@ -384,15 +402,8 @@ function mergeLabels(
   return explicitFact(merged, evidence, Boolean(current?.length));
 }
 
-function clauseAround(text: string, index: number): string {
-  const start = Math.max(0, text.lastIndexOf('.', index), text.lastIndexOf(';', index), text.lastIndexOf(',', index));
-  const endCandidates = [text.indexOf('.', index), text.indexOf(';', index), text.indexOf(',', index)].filter((end) => end >= 0);
-  const end = endCandidates.length ? Math.min(...endCandidates) : text.length;
-  return text.slice(start, end);
-}
-
 function hasProcessContent(text: string): boolean {
-  return /\b(manual|duplicat\w*|software|system|automat\w*|spreadsheet|xero|quickbooks|freeagent|crm)\b/i.test(text);
+  return /\b(manual\w*|duplicat\w*|copying information|spreadsheets?|software|systems?|automat\w*|xero|quickbooks|freeagent|crm)\b/i.test(text);
 }
 
 function isDecline(text: string): boolean {
