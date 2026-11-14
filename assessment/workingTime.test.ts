@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildReview } from './coverage';
 import { createSession, replyTo } from './simulator';
 import type { AssessmentSession, ReviewItem } from './types';
+import { readWorkingTime } from './workingTime';
 
 function reply(session: AssessmentSession, text: string): AssessmentSession {
   return replyTo(session, text);
@@ -131,6 +132,17 @@ describe('working hours', () => {
     const current = workloadItems(session).filter((item) => item.kind !== 'words');
     expect(JSON.stringify(current)).not.toMatch(/10 hours/);
     expect(current.some((item) => /2 hours a week/i.test(item.detail))).toBe(true);
+  });
+
+  it('keeps a 40-hour availability figure out of a 10-hour workload', () => {
+    const time = readWorkingTime(
+      'I need 10 hours of work, but someone available for 40 hours a week.',
+      'workload',
+      null,
+    );
+    expect(time?.amount).toBe(10);
+    expect(time?.weeklyHours).toBe(10);
+    expect(time?.weeklyHours).not.toBe(40);
   });
 
   it('uses a later day count, and does not reuse availability as working days', () => {

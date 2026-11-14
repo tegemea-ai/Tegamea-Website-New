@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 
 interface MessageInputProps {
   disabled: boolean;
+  busy?: boolean;
   onSend: (text: string) => void;
 }
 
-const MessageInput: React.FC<MessageInputProps> = ({ disabled, onSend }) => {
+const MessageInput: React.FC<MessageInputProps> = ({ disabled, busy = false, onSend }) => {
   const [draft, setDraft] = useState('');
 
   const send = () => {
@@ -23,7 +24,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ disabled, onSend }) => {
       <textarea
         id="assessment-reply"
         value={draft}
-        disabled={disabled}
+        disabled={disabled || busy}
         rows={3}
         placeholder={disabled ? 'This conversation is complete.' : 'Write your reply in your own words'}
         onChange={(event) => setDraft(event.target.value)}
@@ -40,10 +41,10 @@ const MessageInput: React.FC<MessageInputProps> = ({ disabled, onSend }) => {
         <button
           type="button"
           onClick={send}
-          disabled={disabled || !draft.trim()}
+          disabled={disabled || busy || !draft.trim()}
           className="px-6 py-3 bg-brand-navy text-white text-sm font-medium hover:bg-brand-charcoal transition-all disabled:opacity-40 disabled:pointer-events-none"
         >
-          Send
+          {busy ? 'Sending…' : 'Send'}
         </button>
       </div>
     </div>

@@ -176,12 +176,13 @@ function parseWorkHours(text: string, topic: TopicId): ParsedHours | null {
   const explicit = [...text.matchAll(explicitHoursPattern())];
   if (explicit.length) {
     const usable = explicit.filter((match) => mentionsWorkTime(text, match.index ?? 0, topic));
-    if (!usable.length) return null;
-    const correction = statedUnitCorrection(text);
-    const preferred = correction
-      ? [...usable].reverse().find((match) => normaliseUnit(match[3]) === correction)
-      : undefined;
-    return toParsed(preferred ?? usable[usable.length - 1], true);
+    if (usable.length) {
+      const correction = statedUnitCorrection(text);
+      const preferred = correction
+        ? [...usable].reverse().find((match) => normaliseUnit(match[3]) === correction)
+        : undefined;
+      return toParsed(preferred ?? usable[usable.length - 1], true);
+    }
   }
 
   if (topic !== 'workload') return null;
@@ -244,19 +245,50 @@ export function statedUnitCorrection(text: string): WorkingTimeUnit | null {
 
 function mentionsWorkTime(text: string, index: number, topic: TopicId): boolean {
   if (statedUnitCorrection(text)) return true;
-  const clause = clauseAround(text, index);
-  const availability = /\b(available|availability|reachable|on hand|cover(?:ing)?|in the office)\b/i.test(clause);
-  const work = /\b(work|tasks?|spend(?:ing)?|takes|taking|admin|doing|active)\b/i.test(clause);
-  if (availability && !work) return false;
-  if (work) return true;
+  const before = text.slice(Math.max(0, index - 42), index);
+  const nearest = nearestCue(before);
+  if (nearest === 'availability') return false;
+  if (nearest === 'work') return true;
+  const after = text.slice(index, Math.min(text.length, index + 28));
+  if (/\b(available|availability|reachable|cover(?:ing)?)\b/i.test(after) && !/\b(work|tasks?|admin|support)\b/i.test(after)) {
+    return false;
+  }
+  if (/\b(work|tasks?|admin|support)\b/i.test(after)) return true;
   return topic === 'workload';
 }
 
-function clauseAround(text: string, index: number): string {
-  const start = Math.max(0, text.lastIndexOf('.', index), text.lastIndexOf(';', index), text.lastIndexOf(',', index));
-  const endCandidates = [text.indexOf('.', index), text.indexOf(';', index), text.indexOf(',', index)].filter((end) => end >= 0);
-  const end = endCandidates.length ? Math.min(...endCandidates) : text.length;
-  return text.slice(start, end);
+function nearestCue(before: string): 'work' | 'availability' | null {
+  let kind: 'work' | 'availability' | null = null;
+  let at = -1;
+  const pattern = /\b(available|availability|reachable|cover(?:ing)?|work|tasks?|spend(?:ing)?|takes|taking|admin|doing|active|support)\b/gi;
+  for (const match of before.matchAll(pattern)) {
+    const word = match[1].toLowerCase();
+    const next = /available|availability|reachable|cover/.test(word) ? 'availability' : 'work';
+    const index = match.index ?? -1;
+    if (index >= at) {
+      at = index;
+      kind = next;
+    }
+  }
+  return kind;
+}
+
+export function workingTimeFromParts(parts: {
+  amount: number;
+  amountTo?: number | null;
+  unit: WorkingTimeUnit;
+  daysPerWeek?: number | null;
+  unitStated?: boolean;
+}): ActiveWorkingTime {
+  const phrase = parts.unit === 'day' ? 'per day' : 'per week';
+  return buildTime(
+    parts.amount,
+    parts.amountTo ?? null,
+    parts.unit,
+    formatStated(parts.amount, parts.amountTo ?? null, phrase),
+    parts.daysPerWeek ?? null,
+    parts.unitStated !== false,
+  );
 }
 
 function formatStated(amount: number, amountTo: number | null, unitPhrase: string): string {

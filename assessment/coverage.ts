@@ -20,6 +20,33 @@ const QUESTION_STAGE: Record<string, ProgressStage> = {
   close: 'review',
 };
 
+export type EssentialGap = 'business' | 'support' | 'workload' | 'schedule' | 'availability' | 'staffing';
+
+/** What still has to be understood before the conversation can close. Optional topics are not listed. */
+export function essentialGaps(record: AssessmentRecord, asked: string[]): EssentialGap[] {
+  const seen = new Set(asked);
+  const gaps: EssentialGap[] = [];
+  if (!hasBusinessNarrative(record) && !record.business.sector.value && !record.business.nature.value) gaps.push('business');
+  if (!hasSupportSignal(record) && !seen.has('support')) gaps.push('support');
+  const time = record.workload.activeTime.value;
+  if (time?.needsClarification && !seen.has('schedule')) gaps.push('schedule');
+  else if (!time && !record.workload.uncertainty.value && !seen.has('workload')) gaps.push('workload');
+  if (!record.availability.window.value && !record.availability.workingDays.value && !seen.has('availability')) {
+    gaps.push('availability');
+  }
+  if (!record.staffing.model.value && !seen.has('staffing')) gaps.push('staffing');
+  return gaps;
+}
+
+export function stageForRecord(record: AssessmentRecord, asked: string[], complete: boolean): ProgressStage {
+  if (complete) return 'review';
+  const gap = essentialGaps(record, asked)[0];
+  if (!gap) return 'review';
+  if (gap === 'business' || gap === 'support') return 'business';
+  if (gap === 'workload' || gap === 'schedule') return 'workload';
+  return 'availability';
+}
+
 export function stageForQuestion(questionId: string | null, complete: boolean): ProgressStage {
   if (complete || !questionId) return 'review';
   return QUESTION_STAGE[questionId] ?? 'review';
