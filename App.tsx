@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Services from './components/Services';
 import JoinUs from './components/JoinUs';
@@ -10,6 +10,7 @@ import Recruitment from './components/Recruitment';
 import Consulting from './components/Consulting';
 import About from './components/About';
 import HybridHome from './components/home/HybridHome';
+import { SHOW_RECRUITMENT_AND_CONSULTING } from './constants';
 
 /**
  * Scroll to top on route change
@@ -99,8 +100,17 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/services" element={<ServicesPage />} />
-          <Route path="/recruitment" element={<RecruitmentPage />} />
-          <Route path="/consulting" element={<ConsultingPage />} />
+          {SHOW_RECRUITMENT_AND_CONSULTING ? (
+            <>
+              <Route path="/recruitment" element={<RecruitmentPage />} />
+              <Route path="/consulting" element={<ConsultingPage />} />
+            </>
+          ) : (
+            <>
+              <Route path="/recruitment" element={<Navigate to="/" replace />} />
+              <Route path="/consulting" element={<Navigate to="/" replace />} />
+            </>
+          )}
           <Route path="/about" element={<AboutPage />} />
           <Route path="/insights" element={<InsightsPage />} />
           <Route path="/insights/:slug" element={<InsightsPage />} />

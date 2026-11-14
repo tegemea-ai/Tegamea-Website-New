@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { SHOW_RECRUITMENT_AND_CONSULTING } from '../constants';
 
 const Footer: React.FC = () => {
   return (
@@ -23,8 +24,12 @@ const Footer: React.FC = () => {
             <ul className="space-y-4 text-white/50 text-sm">
               <li><Link to="/" className="hover:text-white transition-colors">Home</Link></li>
               <li><Link to="/services" className="hover:text-white transition-colors">Virtual Assistant</Link></li>
-              <li><Link to="/recruitment" className="hover:text-white transition-colors">Recruitment</Link></li>
-              <li><Link to="/consulting" className="hover:text-white transition-colors">Consulting</Link></li>
+              {SHOW_RECRUITMENT_AND_CONSULTING && (
+                <>
+                  <li><Link to="/recruitment" className="hover:text-white transition-colors">Recruitment</Link></li>
+                  <li><Link to="/consulting" className="hover:text-white transition-colors">Consulting</Link></li>
+                </>
+              )}
               <li><Link to="/about" className="hover:text-white transition-colors">About</Link></li>
               <li><Link to="/insights" className="hover:text-white transition-colors">Insights</Link></li>
               <li><Link to="/join-us" className="hover:text-white transition-colors">Join Us</Link></li>

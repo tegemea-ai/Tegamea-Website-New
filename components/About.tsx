@@ -24,77 +24,75 @@ const principles = [
 const About: React.FC = () => {
   return (
     <div className="fade-in">
-      {/* Hero */}
-      <section className="pt-16 pb-12 bg-brand-navy text-white relative overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.04] pointer-events-none">
-          <div className="absolute -top-20 -right-20 w-96 h-96 border border-white rotate-12" />
-          <div className="absolute bottom-10 left-10 w-48 h-48 border border-white -rotate-6" />
-        </div>
-        <div className="max-w-7xl mx-auto px-6 md:px-12 text-center relative z-10">
-          <span className="text-brand-gold font-bold tracking-[0.3em] text-[10px] uppercase mb-4 block fade-up">
+      {/* About Tegemea — page introduction */}
+      <section className="pt-10 md:pt-14 pb-8 md:pb-12 bg-white">
+        <div className="max-w-7xl mx-auto px-6 md:px-12">
+          <p className="text-brand-gold font-bold tracking-[0.3em] text-[10px] uppercase mb-3">
             About
-          </span>
-          <h1 className="text-4xl md:text-5xl font-serif mb-4 leading-tight fade-up fade-up-delay-1">
-            Built around trust. Backed by experience.
+          </p>
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-serif text-brand-navy leading-tight mb-4 max-w-4xl">
+            About Tegemea
           </h1>
-          <p className="text-white/60 text-lg max-w-2xl mx-auto font-light leading-relaxed fade-up fade-up-delay-2">
+          <p className="text-2xl md:text-3xl font-serif text-brand-navy/85 leading-snug mb-3 max-w-3xl">
+            Built around trust. Backed by experience.
+          </p>
+          <p className="text-brand-charcoal/70 font-light leading-relaxed text-lg max-w-2xl mb-8 md:mb-10">
             We help businesses find the people and operational support they need to work well and grow with confidence.
           </p>
-        </div>
-      </section>
 
-      {/* About Tegemea */}
-      <section className="py-10 bg-white">
-        <div className="max-w-2xl mx-auto px-8 md:px-12">
-          <h2 className="text-3xl font-serif text-brand-navy mb-5">About Tegemea</h2>
-
-          <figure className="sm:float-left sm:w-[36%] sm:max-w-[240px] sm:mr-7 sm:mb-3 mb-5 w-full">
-            <div className="relative">
-              <div className="absolute -inset-2 border border-brand-gold/30 pointer-events-none" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-14 items-start">
+            {/* Image first on mobile */}
+            <div className="order-1 lg:order-2 relative">
+              <div className="absolute -inset-2 border border-brand-gold/30 pointer-events-none hidden sm:block" />
               <img
                 src="/images/tegemea-stand.png"
                 alt="Tegemea exhibition stand — Giving you the gift of time"
-                className="w-full aspect-[4/5] object-cover object-center image-reveal"
+                className="w-full h-auto object-cover image-reveal"
               />
             </div>
-          </figure>
 
-          <p className="text-brand-charcoal/75 font-light leading-relaxed mb-4">
-            Tegemea provides remote support and permanent recruitment for Executive Assistant, Project Support and Operations Coordinator roles.
-          </p>
-          <p className="border-l-2 border-brand-gold pl-5 py-1 text-brand-navy/90 italic font-light leading-relaxed mb-4">
-            Our name, pronounced <span className="not-italic font-medium text-brand-navy">Teh-geh-may-yah</span>, comes from Swahili and means to trust or depend upon. That meaning sits at the heart of our approach.
-          </p>
-          <p className="text-brand-charcoal/75 font-light leading-relaxed mb-0">
-            We take time to understand your business, your priorities and how you work, connecting you with capable people who bring organisation, capacity and consistency to your operations.
-          </p>
-          <div className="clear-both" />
+            <div className="order-2 lg:order-1 space-y-4 text-brand-charcoal/75 font-light leading-relaxed max-w-xl">
+              <p>
+                Tegemea provides remote support and permanent recruitment for Executive Assistant, Project Support and Operations Coordinator roles.
+              </p>
+              <p className="border-l-2 border-brand-gold pl-5 py-1 text-brand-navy/90 italic">
+                Our name, pronounced <span className="not-italic font-medium text-brand-navy">Teh-geh-may-yah</span>, comes from Swahili and means to trust or depend upon. That meaning sits at the heart of our approach.
+              </p>
+              <p>
+                We take time to understand your business, your priorities and how you work, connecting you with capable people who bring organisation, capacity and consistency to your operations.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
       {/* What we believe */}
-      <section className="py-10 bg-brand-sand/40">
-        <div className="max-w-5xl mx-auto px-6 md:px-12">
-          <div className="max-w-3xl mb-6">
-            <h2 className="text-3xl font-serif text-brand-navy mb-3">What we believe</h2>
+      <section className="py-8 md:py-12 bg-brand-sand/40">
+        <div className="max-w-7xl mx-auto px-6 md:px-12">
+          <div className="max-w-2xl mb-5 md:mb-6">
+            <h2 className="text-2xl md:text-3xl font-serif text-brand-navy mb-3">
+              What we believe
+            </h2>
             <p className="text-brand-charcoal/70 font-light leading-relaxed">
               Good support helps work move forward, brings structure to busy teams and gives leaders time to focus.
             </p>
-            <p className="text-brand-navy/60 text-[11px] mt-4 uppercase tracking-widest font-bold">
+            <p className="text-brand-navy/60 text-[11px] mt-3 uppercase tracking-widest font-bold">
               Our approach rests on four principles
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger-in">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
             {principles.map((principle, i) => (
               <div
                 key={principle.title}
-                className="bg-white p-6 border border-brand-navy/5"
+                className="bg-white p-5 md:p-6 border border-brand-navy/5"
               >
                 <span className="text-brand-gold font-bold text-xs tracking-widest block mb-2">
                   {String(i + 1).padStart(2, '0')}
                 </span>
-                <h3 className="text-lg font-serif text-brand-navy mb-2">{principle.title}</h3>
+                <h3 className="text-base md:text-lg font-serif text-brand-navy mb-1.5">
+                  {principle.title}
+                </h3>
                 <p className="text-brand-charcoal/65 font-light leading-relaxed text-sm">
                   {principle.description}
                 </p>
@@ -104,56 +102,62 @@ const About: React.FC = () => {
         </div>
       </section>
 
-      {/* Meet the founder — text wraps around portrait */}
-      <section className="pt-10 pb-20 bg-white">
-        <div className="max-w-4xl mx-auto px-6">
-          <span className="text-brand-gold font-bold tracking-[0.3em] text-[10px] uppercase mb-2 block">
-            Leadership
-          </span>
-          <h2 className="text-3xl font-serif text-brand-navy mb-5 leading-tight">
-            Meet the founder, Abisola Ifasawo
+      {/* Meet the founder */}
+      <section className="py-8 md:py-12 bg-white">
+        <div className="max-w-7xl mx-auto px-6 md:px-12">
+          <h2 className="text-2xl md:text-3xl font-serif text-brand-navy mb-8 md:mb-10">
+            Meet the founder
           </h2>
 
-          <figure className="sm:float-left sm:w-[34%] sm:max-w-[300px] sm:mr-8 sm:mb-3 mb-5 w-full">
-            <div className="relative">
-              <div className="absolute -inset-2 border border-brand-gold/30 pointer-events-none" />
-              <img
-                src="/images/abisola-ifasawo.png"
-                alt="Abisola Ifasawo, founder of Tegemea"
-                className="w-full aspect-[4/5] object-cover object-top image-reveal"
-              />
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)] gap-8 lg:gap-12 items-start">
+            <div className="order-1">
+              <div className="relative max-w-sm mx-auto lg:mx-0">
+                <div className="absolute -inset-2 border border-brand-gold/30 pointer-events-none hidden sm:block" />
+                <img
+                  src="/images/abisola-ifasawo.png"
+                  alt="Abisola Ifasawo, founder of Tegemea"
+                  className="w-full h-auto object-cover object-top image-reveal"
+                />
+              </div>
+              <div className="mt-4 text-center lg:text-left">
+                <p className="text-xl font-serif text-brand-navy">Abisola Ifasawo</p>
+                <p className="text-brand-gold text-[11px] uppercase tracking-widest font-bold mt-1">
+                  Founder
+                </p>
+              </div>
             </div>
-          </figure>
 
-          <p className="text-brand-charcoal/75 font-light leading-relaxed mb-4">
-            Abisola founded Tegemea in 2020, bringing almost 20 years of experience in business strategy, programme management, operations and organisational transformation.
-          </p>
-          <p className="text-brand-charcoal/75 font-light leading-relaxed mb-4">
-            An experienced business and transformation leader, she has led complex change programmes, established new services and delivered significant operational improvements. Her achievements include delivering £1.8 million in savings through departmental transformation, commissioning £4 million in services and overseeing operations with a £6 million budget.
-          </p>
-          <p className="text-brand-charcoal/75 font-light leading-relaxed mb-4">
-            Her expertise spans business strategy, service redesign, digital transformation and programme delivery, with a focus on bringing people, processes and technology together to turn strategy into measurable results.
-          </p>
-          <p className="text-brand-charcoal/75 font-light leading-relaxed mb-4">
-            Starting her career as an Executive Assistant, Abisola went on to manage teams of Executive Assistants, Project Support professionals and Operations Coordinators. This gave her first-hand insight into the value of effective operational support and the importance of building teams that leaders can depend on.
-          </p>
-          <p className="text-brand-charcoal/75 font-light leading-relaxed mb-4">
-            She holds a BSc in Computer Science with Management from King’s College London and a Master’s in International Relations and Management, alongside practitioner qualifications in PRINCE2 and Management of Portfolios.
-          </p>
-          <p className="text-brand-charcoal/75 font-light leading-relaxed mb-0">
-            With a passion for AI, technology and business innovation, Abisola brings her strategic and operational expertise to Tegemea, helping businesses build high-performing teams, strengthen their operations and create capacity for growth.
-          </p>
-          <div className="clear-both" />
+            <div className="order-2 max-w-2xl space-y-4 text-brand-charcoal/75 font-light leading-relaxed">
+              <p>
+                Abisola founded Tegemea in 2020, bringing almost 20 years of experience in business strategy, programme management, operations and organisational transformation.
+              </p>
+              <p>
+                An experienced business and transformation leader, she has led complex change programmes, established new services and delivered significant operational improvements. Her achievements include delivering £1.8 million in savings through departmental transformation, commissioning £4 million in services and overseeing operations with a £6 million budget.
+              </p>
+              <p>
+                Her expertise spans business strategy, service redesign, digital transformation and programme delivery, with a focus on bringing people, processes and technology together to turn strategy into measurable results.
+              </p>
+              <p>
+                Starting her career as an Executive Assistant, Abisola went on to manage teams of Executive Assistants, Project Support professionals and Operations Coordinators. This gave her first-hand insight into the value of effective operational support and the importance of building teams that leaders can depend on.
+              </p>
+              <p>
+                She holds a BSc in Computer Science with Management from King’s College London and a Master’s in International Relations and Management, alongside practitioner qualifications in PRINCE2 and Management of Portfolios.
+              </p>
+              <p>
+                With a passion for AI, technology and business innovation, Abisola brings her strategic and operational expertise to Tegemea, helping businesses build high-performing teams, strengthen their operations and create capacity for growth.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
       {/* CTA */}
-      <section className="py-12 bg-brand-navy text-white text-center relative overflow-hidden">
+      <section className="py-12 md:py-14 bg-brand-navy text-white text-center relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-full opacity-5 pointer-events-none">
           <div className="absolute top-10 left-10 w-64 h-64 border border-white rotate-12" />
         </div>
         <div className="max-w-3xl mx-auto px-6 relative z-10">
-          <h2 className="text-3xl font-serif mb-4">
+          <h2 className="text-2xl md:text-3xl font-serif mb-4">
             Find the support your business needs
           </h2>
           <p className="text-white/60 font-light mb-8 leading-relaxed">

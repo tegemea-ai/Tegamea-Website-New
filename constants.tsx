@@ -1,5 +1,8 @@
 import { ServicePackage, BlogPost } from './types';
 
+/** Flip to true to publish the Recruitment and Consulting pages again. */
+export const SHOW_RECRUITMENT_AND_CONSULTING = false;
+
 export interface Testimonial {
   quote: string;
   author: string;

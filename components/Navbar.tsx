@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
+import { SHOW_RECRUITMENT_AND_CONSULTING } from '../constants';
 
 type NavChild = { label: string; path: string };
 type NavItem = { label: string; path?: string; children?: NavChild[] };
@@ -34,22 +35,27 @@ const Navbar: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const serviceChildren: NavChild[] = [
+    { label: 'Virtual Assistant', path: '/services' },
+    ...(SHOW_RECRUITMENT_AND_CONSULTING
+      ? [
+          { label: 'Recruitment', path: '/recruitment' },
+          { label: 'Consulting', path: '/consulting' }
+        ]
+      : [])
+  ];
+
   const navItems: NavItem[] = [
     { label: 'Home', path: '/' },
-    {
-      label: 'Services',
-      children: [
-        { label: 'Virtual Assistant', path: '/services' },
-        { label: 'Recruitment', path: '/recruitment' },
-        { label: 'Consulting', path: '/consulting' }
-      ]
-    },
+    serviceChildren.length > 1
+      ? { label: 'Services', children: serviceChildren }
+      : { label: 'Services', path: '/services' },
     { label: 'About', path: '/about' },
     { label: 'Insights', path: '/insights' },
     { label: 'Join Us', path: '/join-us' }
   ];
 
-  const servicePaths = ['/services', '/recruitment', '/consulting'];
+  const servicePaths = serviceChildren.map((child) => child.path);
   const isServicesActive = servicePaths.includes(location.pathname);
 
   const activeLinkClass = "text-brand-gold";
