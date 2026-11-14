@@ -10,7 +10,7 @@ import Recruitment from './components/Recruitment';
 import Consulting from './components/Consulting';
 import About from './components/About';
 import HybridHome from './components/home/HybridHome';
-import AssessmentPlaceholder from './components/assessment/AssessmentPlaceholder';
+import AssessmentView from './components/assessment/AssessmentPage';
 import { SHOW_RECRUITMENT_AND_CONSULTING } from './constants';
 
 /**
@@ -97,7 +97,7 @@ const AssessmentPage: React.FC = () => {
     'Free operational support assessment',
     'A free assessment to understand the operational support your business needs, and whether outsourcing or recruitment is the right fit.'
   );
-  return <AssessmentPlaceholder />;
+  return <AssessmentView />;
 };
 
 export default function App() {
