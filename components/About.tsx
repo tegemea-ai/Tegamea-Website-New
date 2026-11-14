@@ -70,20 +70,33 @@ const About: React.FC = () => {
           <p className="text-2xl md:text-3xl font-serif text-brand-navy/85 leading-snug mb-3 max-w-3xl">
             Built around trust. Backed by experience.
           </p>
-          <p className="text-brand-charcoal/70 font-light leading-relaxed text-lg max-w-2xl mb-8">
+          <p className="text-brand-charcoal/70 font-light leading-relaxed text-lg max-w-2xl mb-8 md:mb-10">
             We help businesses find the people and operational support they need to work well and grow with confidence.
           </p>
 
-          <div className="max-w-2xl space-y-4 text-brand-charcoal/75 font-light leading-relaxed">
-            <p>
-              Tegemea provides remote support and permanent recruitment for Executive Assistant, Project Support and Operations Coordinator roles.
-            </p>
-            <p className="bg-brand-navy text-white/90 p-5 md:p-6 leading-relaxed">
-              Our name, pronounced <span className="text-brand-gold font-medium not-italic">Teh-geh-may-yah</span>, comes from Swahili and means to trust or depend upon. That meaning sits at the heart of our approach.
-            </p>
-            <p>
-              We take time to understand your business, your priorities and how you work, connecting you with capable people who bring organisation, capacity and consistency to your operations.
-            </p>
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,240px)] gap-6 lg:gap-10 items-start">
+            <div className="order-2 lg:order-1 space-y-4 text-brand-charcoal/75 font-light leading-relaxed max-w-xl">
+              <p>
+                Tegemea provides remote support and permanent recruitment for Executive Assistant, Project Support and Operations Coordinator roles.
+              </p>
+              <p className="bg-brand-navy text-white/90 p-5 md:p-6 leading-relaxed">
+                Our name, pronounced <span className="text-brand-gold font-medium not-italic">Teh-geh-may-yah</span>, comes from Swahili and means to trust or depend upon. That meaning sits at the heart of our approach.
+              </p>
+              <p>
+                We take time to understand your business, your priorities and how you work, connecting you with capable people who bring organisation, capacity and consistency to your operations.
+              </p>
+            </div>
+
+            <div className="order-1 lg:order-2">
+              <div className="relative w-full max-w-[220px] mx-auto lg:mx-0">
+                <div className="absolute -inset-1.5 border border-brand-gold/40 pointer-events-none hidden sm:block" />
+                <img
+                  src="/images/tegemea-stand.jpg"
+                  alt="Tegemea stand with branded cupcakes, brochures and business cards"
+                  className="w-full h-auto object-cover image-reveal"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -95,7 +108,7 @@ const About: React.FC = () => {
           <div className="absolute bottom-6 left-10 w-32 h-32 bg-brand-gold/30" />
         </div>
         <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
-          <div className="max-w-2xl mb-5 md:mb-6">
+          <div className="max-w-2xl mx-auto text-center mb-5 md:mb-6">
             <h2 className="text-2xl md:text-3xl font-serif text-white mb-3">
               What we believe
             </h2>
@@ -107,11 +120,11 @@ const About: React.FC = () => {
             </p>
           </div>
 
-          <div className="max-w-3xl grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="max-w-3xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3">
             {principles.map((principle) => (
               <div
                 key={principle.title}
-                className="bg-white/95 p-5 border border-brand-gold/25"
+                className="bg-white/95 p-5 border border-brand-gold/25 text-left"
               >
                 <div className="mb-3 inline-flex items-center justify-center w-10 h-10 bg-brand-sand">
                   {principle.icon}
