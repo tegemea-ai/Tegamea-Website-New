@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import AssessmentPreview from './AssessmentPreview';
 import {
   HERO,
   MORE_ROOM,
@@ -204,19 +205,7 @@ const HybridHome: React.FC = () => {
         </div>
       </section>
 
-      {/* Mid CTA — from Focused */}
-      <section className="py-12 bg-brand-navy text-white text-center">
-        <div className="max-w-2xl mx-auto px-6">
-          <h2 className="text-2xl md:text-3xl font-serif mb-3">{FINAL_CTA.headline}</h2>
-          <p className="text-white/60 font-light text-sm mb-6">{FINAL_CTA.copy}</p>
-          <button
-            onClick={book}
-            className="px-8 py-3.5 bg-brand-gold text-brand-navy text-sm font-medium hover:bg-white transition-all active:scale-[0.98]"
-          >
-            {FINAL_CTA.primaryCta}
-          </button>
-        </div>
-      </section>
+      <AssessmentPreview />
 
       {/* Flexible / Permanent — Editorial sand + navy split */}
       <section className="py-0">

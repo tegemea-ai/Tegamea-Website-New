@@ -10,6 +10,7 @@ import Recruitment from './components/Recruitment';
 import Consulting from './components/Consulting';
 import About from './components/About';
 import HybridHome from './components/home/HybridHome';
+import AssessmentPlaceholder from './components/assessment/AssessmentPlaceholder';
 import { SHOW_RECRUITMENT_AND_CONSULTING } from './constants';
 
 /**
@@ -91,6 +92,14 @@ const ContactPage: React.FC = () => {
   return <BookConsultation />;
 };
 
+const AssessmentPage: React.FC = () => {
+  useSEO(
+    'Free operational support assessment',
+    'A free assessment to understand the operational support your business needs, and whether outsourcing or recruitment is the right fit.'
+  );
+  return <AssessmentPlaceholder />;
+};
+
 export default function App() {
   return (
     <div className="font-sans text-brand-navy antialiased bg-white selection:bg-brand-gold/20">
@@ -116,6 +125,7 @@ export default function App() {
           <Route path="/insights/:slug" element={<InsightsPage />} />
           <Route path="/join-us" element={<JoinUsPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          <Route path="/assessment" element={<AssessmentPage />} />
           <Route path="*" element={<HomePage />} />
         </Routes>
       </main>
