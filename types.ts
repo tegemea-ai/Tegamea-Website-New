@@ -10,12 +10,6 @@ export interface ServicePackage {
   whyWorks: string;
 }
 
-export interface AssessmentResult {
-  packageId: string;
-  reasoning: string;
-  strategicInsight: string;
-}
-
 export interface BlogPost {
   id: string;
   title: string;
