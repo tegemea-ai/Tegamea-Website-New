@@ -4,7 +4,7 @@ import { saveOpeningNote } from '../../assessment/openingNote';
 
 const HOW_IT_WORKS = [
   'You answer one question at a time, in your own words.',
-  'It usually takes about 8–10 minutes.',
+  'It takes approximately 10–15 minutes to complete.',
   'You receive a free recommendation on screen. No email is required to start, or to see that result.',
   'There is no obligation to use Tegemea’s services.',
 ];
@@ -37,18 +37,19 @@ const AssessmentPreview: React.FC = () => {
         <p className="text-brand-gold font-bold tracking-[0.3em] text-[10px] uppercase mb-3">
           Free operational support assessment
         </p>
-        <h2
-          id="assessment-preview-heading"
-          className="text-3xl md:text-4xl font-serif text-brand-navy leading-tight mb-4"
-        >
-          Not sure what operational support your business needs?
-        </h2>
-        <p className="text-brand-charcoal/75 font-light leading-relaxed mb-8">
-          Tell us what&apos;s taking up your time. Our free assessment will help you understand the support your
-          business needs, how much time it may require, and whether outsourcing or recruitment could be the right fit.
-        </p>
 
-        <div className="bg-[#FDFCFB] border border-brand-navy/10 p-6 md:p-8">
+        <div className="bg-[#FDFCFB] border-2 border-brand-navy/30 p-6 md:p-8">
+          <h2
+            id="assessment-preview-heading"
+            className="text-3xl md:text-4xl font-serif text-brand-navy leading-tight mb-4"
+          >
+            Not sure what operational support your business needs?
+          </h2>
+          <p className="text-brand-charcoal/75 font-light leading-relaxed mb-8">
+            Tell us what&apos;s taking up your time. Our free assessment will help you understand the support your
+            business needs, how much time it may require, and whether outsourcing or recruitment could be the right fit.
+          </p>
+
           <label htmlFor={fieldId} className="sr-only">
             Describe what is taking up your time
           </label>
@@ -71,31 +72,30 @@ const AssessmentPreview: React.FC = () => {
               {isStarting ? 'Starting…' : 'Start my free assessment'}
             </button>
             <p className="text-xs text-brand-stone font-light leading-relaxed">
-              Approximately 8–10 minutes
-              <span className="block">No email required to start</span>
+              Takes approximately 10–15 minutes to complete
             </p>
           </div>
+        </div>
 
-          <div className="mt-5">
-            <button
-              type="button"
-              onClick={() => setHowItWorksOpen((open) => !open)}
-              aria-expanded={howItWorksOpen}
-              aria-controls={howItWorksId}
-              className="text-[11px] uppercase tracking-widest font-bold text-brand-navy/70 border-b border-brand-gold/70 pb-0.5 hover:text-brand-gold transition-colors"
-            >
-              How the assessment works
-            </button>
-            {howItWorksOpen && (
-              <div id={howItWorksId} className="mt-4 border-l-2 border-brand-gold pl-5">
-                <ul className="space-y-2 text-sm text-brand-charcoal/75 font-light leading-relaxed">
-                  {HOW_IT_WORKS.map((point) => (
-                    <li key={point}>{point}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
+        <div className="mt-5">
+          <button
+            type="button"
+            onClick={() => setHowItWorksOpen((open) => !open)}
+            aria-expanded={howItWorksOpen}
+            aria-controls={howItWorksId}
+            className="text-[11px] uppercase tracking-widest font-bold text-brand-navy/70 border-b border-brand-gold/70 pb-0.5 hover:text-brand-gold transition-colors"
+          >
+            How the assessment works
+          </button>
+          {howItWorksOpen && (
+            <div id={howItWorksId} className="mt-4 border-l-2 border-brand-gold pl-5">
+              <ul className="space-y-2 text-sm text-brand-charcoal/75 font-light leading-relaxed">
+                {HOW_IT_WORKS.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </div>
     </section>
