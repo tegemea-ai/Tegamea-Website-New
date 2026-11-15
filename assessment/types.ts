@@ -40,6 +40,15 @@ export type TopicId =
   | 'process'
   | 'review';
 
+/** Confirmed and not applicable are closed. Unknown is not automatically a question. */
+export type TopicStatus = 'confirmed' | 'unknown' | 'clarification' | 'not_applicable';
+
+export interface ProvisionalAssumption {
+  id: string;
+  text: string;
+  topic: TopicId;
+}
+
 export type ProgressStage = 'business' | 'workload' | 'availability' | 'preferences' | 'review';
 
 export type StaffingModel = 'outsourced' | 'permanent' | 'comparing' | 'unsure';
@@ -73,6 +82,7 @@ export interface AssessmentRecord {
   };
   project: {
     mentioned: boolean;
+    status: TopicStatus;
     notes: Fact<string[]>;
     activeProjects: Fact<string>;
   };
@@ -111,6 +121,8 @@ export interface AssessmentRecord {
     automation: Fact<string>;
   };
   statements: Statement[];
+  /** Reasonable readings that must not be shown as confirmed facts. */
+  assumptions: ProvisionalAssumption[];
 }
 
 export interface AssessmentSession {
@@ -126,7 +138,7 @@ export interface AssessmentSession {
 export interface ReviewItem {
   label: string;
   detail: string;
-  kind: 'confirmed' | 'derived' | 'words' | 'unknown' | 'skipped';
+  kind: 'confirmed' | 'derived' | 'provisional' | 'words' | 'unknown' | 'skipped';
 }
 
 export interface ReviewSection {
@@ -156,7 +168,7 @@ export function createEmptyRecord(): AssessmentRecord {
       challenges: unknownFact(),
     },
     executive: { mentioned: false, responsibilities: unknownFact() },
-    project: { mentioned: false, notes: unknownFact(), activeProjects: unknownFact() },
+    project: { mentioned: false, status: 'unknown', notes: unknownFact(), activeProjects: unknownFact() },
     operations: { mentioned: false, notes: unknownFact() },
     workload: {
       activeTime: unknownFact(),
@@ -189,5 +201,6 @@ export function createEmptyRecord(): AssessmentRecord {
       automation: unknownFact(),
     },
     statements: [],
+    assumptions: [],
   };
 }

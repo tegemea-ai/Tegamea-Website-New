@@ -22,15 +22,20 @@ const QUESTION_STAGE: Record<string, ProgressStage> = {
 
 export type EssentialGap = 'business' | 'support' | 'workload' | 'schedule' | 'availability' | 'staffing';
 
-/** What still has to be understood before the conversation can close. Optional topics are not listed. */
+/**
+ * What could still change an indicative recommendation.
+ * A daily figure with unknown days comes first, so the hours are not asked for again.
+ * Optional topics, exact clock times, and not-applicable categories are not listed.
+ * Business and support are asked at most once: an unanswered question is not the same as a relevant gap.
+ */
 export function essentialGaps(record: AssessmentRecord, asked: string[]): EssentialGap[] {
   const seen = new Set(asked);
   const gaps: EssentialGap[] = [];
-  if (!hasBusinessNarrative(record) && !record.business.sector.value && !record.business.nature.value) gaps.push('business');
-  if (!hasSupportSignal(record) && !seen.has('support')) gaps.push('support');
   const time = record.workload.activeTime.value;
   if (time?.needsClarification && !seen.has('schedule')) gaps.push('schedule');
   else if (!time && !record.workload.uncertainty.value && !seen.has('workload')) gaps.push('workload');
+  if (!hasBusinessNarrative(record) && !seen.has('business')) gaps.push('business');
+  if (!hasSupportSignal(record) && !seen.has('support')) gaps.push('support');
   if (!record.availability.window.value && !record.availability.workingDays.value && !seen.has('availability')) {
     gaps.push('availability');
   }
@@ -53,7 +58,16 @@ export function stageForQuestion(questionId: string | null, complete: boolean): 
 }
 
 export function hasBusinessNarrative(record: AssessmentRecord): boolean {
-  return record.statements.some((statement) => statement.topic === 'business');
+  if (record.business.sector.value || record.business.nature.value || record.business.size.value || record.business.model.value) {
+    return true;
+  }
+  return record.statements.some((statement) => statement.topic === 'business' && describesBusiness(statement.text));
+}
+
+function describesBusiness(text: string): boolean {
+  return /\b(we are|we're|we’re|i am a|i'm a|i’m a|i run|i own|our (?:firm|business|practice|company)|consultancy|law firm|accountan\w*|charity|clinic|agency)\b/i.test(
+    text,
+  );
 }
 
 export function hasSupportSignal(record: AssessmentRecord): boolean {
@@ -147,14 +161,18 @@ export function buildReview(record: AssessmentRecord): ReviewSection[] {
       : [{ label: 'Executive support', detail: 'Not discussed.', kind: 'unknown' }],
   });
 
+  const projectStatus = record.project.status ?? (record.project.mentioned ? 'confirmed' : 'unknown');
   sections.push({
     title: 'Project support',
-    items: [
-      ...(record.project.mentioned
-        ? confirmed('Named project work', record.project.notes.value?.join(', '))
-        : [{ label: 'Project support', detail: 'Not discussed.', kind: 'unknown' as const }]),
-      ...confirmed('Active projects', record.project.activeProjects.value),
-    ],
+    items:
+      projectStatus === 'not_applicable'
+        ? [{ label: 'Project support', detail: 'Not applicable. You said there are no ongoing projects.', kind: 'skipped' }]
+        : [
+            ...(record.project.mentioned
+              ? confirmed('Named project work', record.project.notes.value?.join(', '))
+              : [{ label: 'Project support', detail: 'Not discussed.', kind: 'unknown' as const }]),
+            ...confirmed('Active projects', record.project.activeProjects.value),
+          ],
   });
 
   sections.push({
@@ -244,6 +262,18 @@ export function buildReview(record: AssessmentRecord): ReviewSection[] {
             : [{ label: 'Process improvement', detail: 'Not discussed.', kind: 'unknown' as const }]),
         ],
   });
+
+  const assumptions = record.assumptions ?? [];
+  if (assumptions.length) {
+    sections.push({
+      title: 'Provisional assumptions',
+      items: assumptions.map((assumption) => ({
+        label: 'Provisional',
+        detail: assumption.text,
+        kind: 'provisional' as const,
+      })),
+    });
+  }
 
   return sections.filter((section) => section.items.length > 0);
 }

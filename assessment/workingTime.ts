@@ -2,12 +2,25 @@ import type { ActiveWorkingTime, TopicId, WorkingTimeUnit } from './types';
 
 /**
  * Reads a working-time figure when the visitor uses a clear number and unit.
- *
- * Phase 3 should replace this with Gemini for anything less direct: word numbers,
- * "a couple of hours", negation, or a correction that does not name the unit.
+ * Small word numbers ("two", "five", "a couple of") count. Vague amounts do not.
  * This module must not assume a five-day week, and must not treat availability
  * ("someone needs to be reachable") as active working time.
  */
+
+const SMALL_NUMBERS: Record<string, string> = {
+  one: '1',
+  two: '2',
+  three: '3',
+  four: '4',
+  five: '5',
+  six: '6',
+  seven: '7',
+  eight: '8',
+  nine: '9',
+  ten: '10',
+  eleven: '11',
+  twelve: '12',
+};
 
 interface ParsedHours {
   amount: number;
@@ -23,9 +36,11 @@ export function readWorkingTime(
   current: ActiveWorkingTime | null,
   questionId = '',
 ): ActiveWorkingTime | null {
-  const parsed = parseWorkHours(text, topic);
+  const numericText = withNumericQuantities(text);
+  const parsed = parseWorkHours(numericText, topic);
   const correction = statedUnitCorrection(text);
-  const days = parseWorkDays(text, questionId === 'schedule', parsed?.unit === 'day' || correction === 'day');
+  const awaitingDays = questionId === 'schedule' || (current?.unit === 'day' && current.needsClarification);
+  const days = parseWorkDays(numericText, awaitingDays, parsed?.unit === 'day' || correction === 'day');
 
   if (!parsed && days == null && !correction) return null;
 
@@ -190,7 +205,29 @@ function parseWorkHours(text: string, topic: TopicId): ParsedHours | null {
   const match = bare[bare.length - 1];
   if (!match) return null;
   const parsed = toParsed(match, false);
-  return parsed ? { ...parsed, unit: 'week', stated: formatStated(parsed.amount, parsed.amountTo, 'per week'), unitStated: false } : null;
+  if (!parsed) return null;
+  const delayed = statedUnitAfter(text, (match.index ?? 0) + match[0].length);
+  if (!delayed) {
+    return { ...parsed, unit: 'week', stated: formatStated(parsed.amount, parsed.amountTo, 'per week'), unitStated: false };
+  }
+  return {
+    ...parsed,
+    unit: delayed,
+    stated: formatStated(parsed.amount, parsed.amountTo, delayed === 'day' ? 'per day' : 'per week'),
+    unitStated: true,
+  };
+}
+
+/** "2 hours of support per day" keeps the day unit even when words sit between the number and the unit. */
+function statedUnitAfter(text: string, from: number): WorkingTimeUnit | null {
+  const rest = text.slice(from);
+  const boundary = rest.search(/\b\d{1,2}\s*(?:hours?|hrs?)\b|[.!?]/i);
+  const clause = boundary === -1 ? rest.slice(0, 90) : rest.slice(0, boundary);
+  const dayAt = clause.search(/\b(?:a|per|each|\/)\s*day\b|\bdaily\b/i);
+  const weekAt = clause.search(/\b(?:a|per|each|\/)\s*week\b|\bweekly\b/i);
+  if (dayAt === -1 && weekAt === -1) return null;
+  if (weekAt === -1 || (dayAt !== -1 && dayAt < weekAt)) return 'day';
+  return 'week';
 }
 
 function toParsed(match: RegExpMatchArray, unitStated: boolean): ParsedHours | null {
@@ -289,6 +326,22 @@ export function workingTimeFromParts(parts: {
     parts.daysPerWeek ?? null,
     parts.unitStated !== false,
   );
+}
+
+/** True when the visitor wrote the amount as a digit or as a small word quantity. */
+export function textHasQuantity(text: string, amount: number): boolean {
+  if (new RegExp(`\\b${amount}\\b`).test(text)) return true;
+  const numeric = withNumericQuantities(text);
+  return numeric !== text && new RegExp(`\\b${amount}\\b`).test(numeric);
+}
+
+function withNumericQuantities(text: string): string {
+  const words = Object.keys(SMALL_NUMBERS).join('|');
+  return text
+    .replace(/\b(?:a\s+)?couple\s+of(?=\s+hours?\b)/gi, '2')
+    .replace(new RegExp(`\\b(${words})\\b(?=\\s+hours?\\b)`, 'gi'), (word) => SMALL_NUMBERS[word.toLowerCase()] ?? word)
+    .replace(new RegExp(`\\b(${words})\\b(?=\\s+days?\\b)`, 'gi'), (word) => SMALL_NUMBERS[word.toLowerCase()] ?? word)
+    .replace(new RegExp(`^\\s*(${words})\\s*\\.?\\s*$`, 'i'), (full, word: string) => SMALL_NUMBERS[word.toLowerCase()] ?? full);
 }
 
 function formatStated(amount: number, amountTo: number | null, unitPhrase: string): string {

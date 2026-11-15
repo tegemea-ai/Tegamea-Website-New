@@ -6,6 +6,7 @@ const kindStyle: Record<ReviewItem['kind'], string> = {
   confirmed: 'border-brand-gold bg-white',
   derived: 'border-brand-gold/50 bg-white',
   words: 'border-brand-navy/10 bg-white',
+  provisional: 'border-dashed border-brand-gold/70 bg-transparent',
   unknown: 'border-dashed border-brand-navy/20 bg-transparent',
   skipped: 'border-dashed border-brand-navy/20 bg-transparent',
 };

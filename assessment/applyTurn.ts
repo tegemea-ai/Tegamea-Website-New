@@ -1,5 +1,12 @@
 import { essentialGaps, type EssentialGap } from './coverage';
 import {
+  affirmsProjects,
+  composeAssistantReply,
+  declinesProjects,
+  describePeak,
+  partOfDayPreference,
+} from './questionPolicy';
+import {
   createEmptyRecord,
   explicitFact,
   inferredFact,
@@ -7,6 +14,7 @@ import {
   type AssessmentRecord,
   type Fact,
   type FactSource,
+  type ProvisionalAssumption,
   type StaffingModel,
   type Statement,
   type TopicId,
@@ -16,6 +24,7 @@ import {
   readWorkingTime,
   sameWorkingTime,
   statedUnitCorrection,
+  textHasQuantity,
   workingTimeChanged,
   workingTimeFromParts,
 } from './workingTime';
@@ -24,22 +33,6 @@ export const MAX_MESSAGES = 40;
 export const MAX_MESSAGE_CHARS = 2000;
 export const MAX_VISITOR_TURNS = 24;
 export const MAX_BODY_CHARS = 80_000;
-
-const SAFE_CLOSE =
-  "That's enough for this stage. A later phase will turn this into a recommendation. I haven't suggested how to staff it or calculated a cost.";
-
-const GAP_QUESTION: Record<EssentialGap, string> = {
-  business:
-    "Could you tell me a little about your business, and what's prompted you to look for operational support?",
-  support: 'Which parts of the work are taking the time?',
-  workload:
-    'Roughly how much active working time does this take, and is that per day or per week? If you are not sure of a number, say so.',
-  schedule: "How many days a week does that apply to? I won't assume a five-day week.",
-  availability: 'Separately from those working hours, when would someone need to be available?',
-  staffing: 'Are you leaning towards outsourced support, hiring someone, or are you still comparing the two?',
-};
-
-const BLOCKED_REPLY = /£|\$\s?\d|\bper hour\b|\bi recommend\b|\brecruitment fee\b|\bon-?costs?\b|\bsalary\b/i;
 
 export interface ModelTurn {
   assistantMessage: string;
@@ -260,7 +253,7 @@ export function parseTurnRequest(body: unknown): { ok: true; value: TurnRequest 
 }
 
 export function applyModelTurn(record: AssessmentRecord, visitorText: string, model: ModelTurn, asked: string[]): AppliedTurn {
-  const next = cloneRecord(record);
+  const next = normaliseRecord(cloneRecord(record));
   const gapBefore = essentialGaps(next, asked)[0] ?? null;
   const text = visitorText.trim();
 
@@ -297,20 +290,26 @@ export function applyModelTurn(record: AssessmentRecord, visitorText: string, mo
 
   const gaps = essentialGaps(next, nextAsked);
   const visitorDone = isDone(text);
-  const extras = nextAsked.filter((item) => item === 'extra').length;
-  const scheduleStillOpen = gaps.includes('schedule') && !nextAsked.includes('schedule');
+  const closeAlreadyAsked = nextAsked.includes('close');
+  const scheduleStillOpen = gaps.includes('schedule');
   let complete = false;
-  if (gaps.length === 0 && (model.suggestComplete || visitorDone || extras >= 2)) complete = true;
+  if (!scheduleStillOpen && gaps.length === 0 && (model.suggestComplete || visitorDone || closeAlreadyAsked)) complete = true;
   else if (visitorDone && !scheduleStillOpen) complete = true;
-  else if (gaps.length === 0) remember('extra');
 
+  const reply = composeAssistantReply({
+    message: model.assistantMessage,
+    record: next,
+    gap: complete ? null : (gaps[0] ?? null),
+    complete,
+    asked: nextAsked,
+  });
   const pending = complete ? null : (gaps[0] ?? 'review');
   return {
     record: next,
-    asked: nextAsked,
+    asked: reply.asked,
     pending,
     complete,
-    assistantMessage: publicReply(model.assistantMessage, gaps[0] ?? null, complete),
+    assistantMessage: reply.text,
   };
 }
 
@@ -338,15 +337,21 @@ export function summariseRecord(record: AssessmentRecord): string {
     factLine('Nature', record.business.nature),
     factLine('Challenge', record.business.challenges),
     record.executive.responsibilities.value?.length ? `Executive: ${record.executive.responsibilities.value.join(', ')}` : '',
-    record.project.notes.value?.length ? `Project: ${record.project.notes.value.join(', ')}` : '',
+    (record.project.status ?? 'unknown') === 'not_applicable'
+      ? ''
+      : record.project.notes.value?.length
+        ? `Project: ${record.project.notes.value.join(', ')}`
+        : '',
     record.operations.notes.value?.length ? `Operations: ${record.operations.notes.value.join(', ')}` : '',
     time
-      ? `Active time: ${time.stated}${time.needsClarification ? ' (days unknown, do not convert to a week)' : time.weeklyHours != null && time.unit === 'day' ? `; calculated week ${time.weeklyHours}` : ''}`
+      ? `Active time: ${time.stated}; unit ${time.unit}; days per week ${time.daysPerWeek ?? 'unknown'}${time.needsClarification ? '; weekly hours not calculated' : time.weeklyHours != null && time.unit === 'day' ? `; calculated week ${time.weeklyHours}` : ''}`
       : record.workload.uncertainty.value
         ? 'Active time: unknown'
         : '',
+    factLine('Peaks', record.workload.peak),
     factLine('Availability', record.availability.window),
     factLine('Working days', record.availability.workingDays),
+    (record.project.status ?? 'unknown') === 'not_applicable' ? 'Project support: not applicable' : '',
     factLine('Staffing', record.staffing.model),
     factLine('Location', record.staffing.location),
     record.process.manualWork.value ? 'Process: manual or duplicated work mentioned' : '',
@@ -383,13 +388,23 @@ function applyLabels(record: AssessmentRecord, text: string, model: ModelTurn): 
     record.executive.mentioned = true;
     record.executive.responsibilities = mergeList(record.executive.responsibilities, executive, model.executive.correction, text);
   }
-  const project = unique([...labelsInText(text, PROJECT), ...modelLabels(model.project.notes, PROJECT, text)]);
-  if (project.length) {
-    record.project.mentioned = true;
-    record.project.notes = mergeList(record.project.notes, project, model.project.correction, text);
+  if (declinesProjects(text)) {
+    record.project.status = 'not_applicable';
+    record.project.mentioned = false;
+    record.project.notes = explicitFact(['None'], text, Boolean(record.project.notes.value?.length));
+    record.project.activeProjects = explicitFact('None', text, Boolean(record.project.activeProjects.value));
+  } else if ((record.project.status ?? 'unknown') !== 'not_applicable' || affirmsProjects(text)) {
+    const project = unique([...labelsInText(text, PROJECT), ...modelLabels(model.project.notes, PROJECT, text)]);
+    if (project.length) {
+      record.project.mentioned = true;
+      record.project.status = 'confirmed';
+      record.project.notes = mergeList(record.project.notes, project, model.project.correction, text);
+    }
+    const count = text.match(/\b(\d{1,3})\s+(?:active\s+)?projects?\b/i);
+    if (count && !declinesProjects(text)) {
+      record.project.activeProjects = explicitFact(`${count[1]} projects`, text, Boolean(record.project.activeProjects.value));
+    }
   }
-  const count = text.match(/\b(\d{1,3})\s+(?:active\s+)?projects?\b/i);
-  if (count) record.project.activeProjects = explicitFact(`${count[1]} projects`, text, Boolean(record.project.activeProjects.value));
   const operations = unique([...labelsInText(text, OPERATIONS), ...modelLabels(model.operations.notes, OPERATIONS, text)]);
   if (operations.length) {
     record.operations.mentioned = true;
@@ -410,14 +425,14 @@ function applyWorkingTime(record: AssessmentRecord, text: string, model: ModelTu
     const saysDay = /\b(?:a|per|each|\/)\s*day\b|\bdaily\b/i.test(text);
     const saysWeek = /\b(?:a|per|each|\/)\s*week\b|\bweekly\b/i.test(text);
     const unitAgrees = !(proposal.unit === 'week' && saysDay && !statedUnitCorrection(text)) && !(proposal.unit === 'day' && saysWeek && !saysDay);
-    const days = proposal.unit === 'day' && proposal.daysPerWeek != null && textHasAmount(text, proposal.daysPerWeek) ? proposal.daysPerWeek : null;
+    const days = proposal.unit === 'day' && proposal.daysPerWeek != null && textHasQuantity(text, proposal.daysPerWeek) ? proposal.daysPerWeek : null;
     if (
       canReplace &&
       unitAgrees &&
       proposal.amount != null &&
       (proposal.unit === 'day' || proposal.unit === 'week') &&
-      textHasAmount(text, proposal.amount) &&
-      (proposal.amountTo == null || textHasAmount(text, proposal.amountTo))
+      textHasQuantity(text, proposal.amount) &&
+      (proposal.amountTo == null || textHasQuantity(text, proposal.amountTo))
     ) {
       const built = workingTimeFromParts({
         amount: proposal.amount,
@@ -435,8 +450,9 @@ function applyWorkingTime(record: AssessmentRecord, text: string, model: ModelTu
   if (model.workingTime.pattern && /\b(each week|every week|weekly|occasional|ad hoc|regular)\b/i.test(text)) {
     record.workload.pattern = replaceText(record.workload.pattern, clean(model.workingTime.pattern, 80), 'explicit', model.workingTime.correction, text);
   }
-  if (model.workingTime.peak && /\b(peak|busier|quarter[- ]end|month[- ]end|year[- ]end)\b/i.test(text)) {
-    record.workload.peak = replaceText(record.workload.peak, 'You described busier periods as well as the normal week.', 'explicit', false, text);
+  const peak = describePeak(text);
+  if (peak && (!record.workload.peak.value || /group travel/i.test(peak))) {
+    record.workload.peak = replaceText(record.workload.peak, peak, 'explicit', false, text);
   }
 }
 
@@ -445,8 +461,19 @@ function applyAvailability(record: AssessmentRecord, text: string, model: ModelT
   if (gap !== 'schedule' && found.days) {
     record.availability.workingDays = replaceText(record.availability.workingDays, found.days, 'explicit', model.availability.correction, text);
   }
+  const preference = partOfDayPreference(text);
   if (found.window) {
     record.availability.window = replaceText(record.availability.window, found.window, 'explicit', model.availability.correction, text);
+  } else if (preference) {
+    record.availability.window = replaceText(record.availability.window, preference, 'explicit', model.availability.correction, text);
+    if (/morning/i.test(preference) && /late afternoon/i.test(preference)) {
+      addAssumption(record, 'Split-day coverage may be suitable, subject to staffing availability.', 'availability');
+      addAssumption(
+        record,
+        'Exact start and finish times are not needed for this assessment and can be confirmed during onboarding.',
+        'availability',
+      );
+    }
   } else if (model.availability.window && numbersAreInText(text, model.availability.window)) {
     record.availability.window = replaceText(
       record.availability.window,
@@ -503,18 +530,15 @@ function applyProcess(record: AssessmentRecord, text: string, model: ModelTurn):
   }
   const systems = [...labelsInText(text, SYSTEMS), ...modelLabels(model.process.systems, SYSTEMS, text)];
   if (systems.length) record.process.systems = mergeList(record.process.systems, unique(systems), false, text);
-  if (model.process.skipped && isDecline(text)) record.process.skipped = true;
+  if ((model.process.skipped && isDecline(text)) || (isUnsure(text) && /\b(software|systems?|tools?|automation)\b/i.test(text))) {
+    record.process.skipped = true;
+  }
 }
 
-function publicReply(message: string, gap: EssentialGap | null, complete: boolean): string {
-  let text = message.replace(/\s+/g, ' ').trim().slice(0, 1200);
-  if (!text || BLOCKED_REPLY.test(text)) text = complete ? SAFE_CLOSE : GAP_QUESTION[gap ?? 'business'];
-  if (complete) {
-    if (!/later phase/i.test(text)) text = `${text} ${SAFE_CLOSE}`.trim();
-    return text;
-  }
-  if (gap && !text.includes('?')) text = `${text} ${GAP_QUESTION[gap]}`.trim();
-  return text;
+function addAssumption(record: AssessmentRecord, text: string, topic: ProvisionalAssumption['topic']): void {
+  if (!Array.isArray(record.assumptions)) record.assumptions = [];
+  if (record.assumptions.some((assumption) => assumption.text === text)) return;
+  record.assumptions.push({ id: `a${record.assumptions.length + 1}`, text, topic });
 }
 
 function replaceText<T extends string>(current: Fact<T>, value: string | null, source: FactSource, correction: boolean, evidence: string): Fact<T> {
@@ -667,7 +691,13 @@ function numbersAreInText(text: string, value: string): boolean {
 }
 
 function textHasAmount(text: string, amount: number): boolean {
-  return new RegExp(`\\b${amount}\\b`).test(text);
+  return textHasQuantity(text, amount);
+}
+
+function normaliseRecord(record: AssessmentRecord): AssessmentRecord {
+  if (!record.project.status) record.project.status = record.project.mentioned ? 'confirmed' : 'unknown';
+  if (!Array.isArray(record.assumptions)) record.assumptions = [];
+  return record;
 }
 
 function clean(value: string | null, max: number): string | null {
