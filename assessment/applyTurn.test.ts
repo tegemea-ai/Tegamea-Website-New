@@ -8,7 +8,7 @@ function turn(text: string, model = blankModelTurn('Noted.')) {
 }
 
 describe('assessment turn rules', () => {
-  it('keeps 2 hours per day as daily and asks for the days', () => {
+  it('keeps 2 hours per day as an estimate and explores the diary before asking for days', () => {
     const applied = turn('The diary work takes 2 hours per day.');
     const time = applied.record.workload.activeTime.value;
     expect(time?.unit).toBe('day');
@@ -16,8 +16,11 @@ describe('assessment turn rules', () => {
     expect(time?.daysPerWeek).toBeNull();
     expect(time?.weeklyHours).toBeNull();
     expect(time?.needsClarification).toBe(true);
+    expect(applied.record.workload.requestedTime.value?.amount).toBe(2);
+    expect(applied.record.workload.assessed.value).toBeNull();
     expect(applied.complete).toBe(false);
-    expect(applied.assistantMessage).toMatch(/days a week/i);
+    expect(applied.assistantMessage).toMatch(/diary/i);
+    expect(applied.assistantMessage).not.toMatch(/days a week/i);
     expect(applied.assistantMessage).not.toMatch(/2 hours per week/i);
   });
 
@@ -35,8 +38,9 @@ describe('assessment turn rules', () => {
     expect(time?.amount).toBe(2);
     expect(time?.weeklyHours).toBeNull();
     expect(time?.needsClarification).toBe(true);
-    expect(corrected.assistantMessage).toMatch(/won't assume a five-day week/i);
+    expect(corrected.record.workload.assessed.value).toBeNull();
     expect(corrected.assistantMessage).not.toMatch(/10 hours/);
+    expect(corrected.assistantMessage).not.toMatch(/2 hours per week/i);
   });
 
   it('keeps 10 hours of work separate from 40 hours of availability', () => {

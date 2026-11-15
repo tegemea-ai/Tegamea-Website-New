@@ -49,6 +49,12 @@ export interface ProvisionalAssumption {
   topic: TopicId;
 }
 
+/** Something the visitor described about the work. It is evidence, not a calculated hour figure. */
+export interface WorkloadEvidenceNote {
+  id: string;
+  text: string;
+}
+
 export type ProgressStage = 'business' | 'workload' | 'availability' | 'preferences' | 'review';
 
 export type StaffingModel = 'outsourced' | 'permanent' | 'comparing' | 'unsure';
@@ -78,6 +84,8 @@ export interface AssessmentRecord {
   };
   executive: {
     mentioned: boolean;
+    /** The role the visitor asked for. It is not confirmation that this is the right role. */
+    requestedRole: Fact<string>;
     responsibilities: Fact<string[]>;
   };
   project: {
@@ -91,7 +99,15 @@ export interface AssessmentRecord {
     notes: Fact<string[]>;
   };
   workload: {
+    /** The visitor's own hour estimate, kept in the unit they used. Not a validated workload. */
     activeTime: Fact<ActiveWorkingTime>;
+    /** Same estimate, held separately so a later assessment cannot be mistaken for what they asked for. */
+    requestedTime: Fact<ActiveWorkingTime>;
+    evidence: WorkloadEvidenceNote[];
+    /** Left unset until a later phase compares the estimate with the evidence. */
+    assessed: Fact<string>;
+    /** Set only when the visitor agrees a figure. Not calculated here. */
+    agreed: Fact<ActiveWorkingTime>;
     pattern: Fact<string>;
     peak: Fact<string>;
     uncertainty: Fact<string>;
@@ -167,11 +183,15 @@ export function createEmptyRecord(): AssessmentRecord {
       model: unknownFact(),
       challenges: unknownFact(),
     },
-    executive: { mentioned: false, responsibilities: unknownFact() },
+    executive: { mentioned: false, requestedRole: unknownFact(), responsibilities: unknownFact() },
     project: { mentioned: false, status: 'unknown', notes: unknownFact(), activeProjects: unknownFact() },
     operations: { mentioned: false, notes: unknownFact() },
     workload: {
       activeTime: unknownFact(),
+      requestedTime: unknownFact(),
+      evidence: [],
+      assessed: unknownFact(),
+      agreed: unknownFact(),
       pattern: unknownFact(),
       peak: unknownFact(),
       uncertainty: unknownFact(),

@@ -24,22 +24,19 @@ export type EssentialGap = 'business' | 'support' | 'workload' | 'schedule' | 'a
 
 /**
  * What could still change an indicative recommendation.
- * A daily figure with unknown days comes first, so the hours are not asked for again.
- * Optional topics, exact clock times, and not-applicable categories are not listed.
- * Business and support are asked at most once: an unanswered question is not the same as a relevant gap.
+ * Responsibilities come before hours, days and availability. A visitor's hour estimate does not open those questions.
+ * Availability and exact clock times are not required. Business and support are asked at most once.
  */
 export function essentialGaps(record: AssessmentRecord, asked: string[]): EssentialGap[] {
   const seen = new Set(asked);
   const gaps: EssentialGap[] = [];
   const time = record.workload.activeTime.value;
-  if (time?.needsClarification && !seen.has('schedule')) gaps.push('schedule');
-  else if (!time && !record.workload.uncertainty.value && !seen.has('workload')) gaps.push('workload');
+  if (!hasResponsibilities(record) && !seen.has('support')) gaps.push('support');
   if (!hasBusinessNarrative(record) && !seen.has('business')) gaps.push('business');
-  if (!hasSupportSignal(record) && !seen.has('support')) gaps.push('support');
-  if (!record.availability.window.value && !record.availability.workingDays.value && !seen.has('availability')) {
-    gaps.push('availability');
+  if (hasResponsibilities(record) && !time && !record.workload.uncertainty.value && !seen.has('workload')) gaps.push('workload');
+  if (hasResponsibilities(record) && !record.staffing.model.value && !seen.has('staffing') && (time || seen.has('workload'))) {
+    gaps.push('staffing');
   }
-  if (!record.staffing.model.value && !seen.has('staffing')) gaps.push('staffing');
   return gaps;
 }
 
@@ -72,6 +69,14 @@ function describesBusiness(text: string): boolean {
 
 export function hasSupportSignal(record: AssessmentRecord): boolean {
   return record.executive.mentioned || record.project.mentioned || record.operations.mentioned;
+}
+
+/** Named duties, not merely a job title such as "EA". */
+export function hasResponsibilities(record: AssessmentRecord): boolean {
+  if (record.executive.responsibilities.value?.length) return true;
+  const projectNotes = record.project.notes.value ?? [];
+  if ((record.project.status ?? 'unknown') !== 'not_applicable' && projectNotes.some((note) => note !== 'None')) return true;
+  return Boolean(record.operations.notes.value?.length);
 }
 
 export function hasProcessAnswer(record: AssessmentRecord): boolean {
@@ -119,8 +124,13 @@ function workloadTimeItems(record: AssessmentRecord): ReviewSection['items'] {
   const items: ReviewSection['items'] = [
     {
       label: 'Active working time',
-      detail: statedWorkingTimeDetail(time, Boolean(record.workload.activeTime.revised)),
+      detail: `${statedWorkingTimeDetail(time, Boolean(record.workload.activeTime.revised))} This is the visitor's estimate, not a validated workload.`,
       kind: 'confirmed',
+    },
+    {
+      label: 'Assessed workload',
+      detail: record.workload.assessed?.value ?? 'Not calculated. The estimate has not been compared with the work described.',
+      kind: record.workload.assessed?.value ? 'provisional' : 'unknown',
     },
   ];
   const calculated = calculatedWeeklyDetail(time);
@@ -154,11 +164,23 @@ export function buildReview(record: AssessmentRecord): ReviewSection[] {
     ],
   });
 
+  const requestedRole = record.executive.requestedRole?.value;
   sections.push({
     title: 'Executive and administrative support',
-    items: record.executive.mentioned
-      ? confirmed('Named responsibilities', record.executive.responsibilities.value?.join(', '))
-      : [{ label: 'Executive support', detail: 'Not discussed.', kind: 'unknown' }],
+    items: [
+      ...confirmed('Role asked for', requestedRole ? `${requestedRole}. Not yet confirmed as the right fit.` : null),
+      ...(record.executive.mentioned
+        ? confirmed('Named responsibilities', record.executive.responsibilities.value?.join(', '))
+        : [
+            {
+              label: 'Executive support',
+              detail: requestedRole
+                ? 'The role was named. The responsibilities have not been confirmed yet.'
+                : 'Not discussed.',
+              kind: 'unknown' as const,
+            },
+          ]),
+    ],
   });
 
   const projectStatus = record.project.status ?? (record.project.mentioned ? 'confirmed' : 'unknown');
@@ -195,6 +217,11 @@ export function buildReview(record: AssessmentRecord): ReviewSection[] {
       ...workloadTimeItems(record),
       ...confirmed('Pattern', record.workload.pattern.value),
       ...confirmed('Peaks', record.workload.peak.value),
+      ...(record.workload.evidence ?? []).map((note) => ({
+        label: 'Workload evidence',
+        detail: note.text,
+        kind: 'confirmed' as const,
+      })),
       ...words('workload', record).map((text) => ({ label: 'In your words', detail: text, kind: 'words' as const })),
     ],
   });

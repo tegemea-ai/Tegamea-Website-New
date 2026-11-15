@@ -21,9 +21,9 @@ const AssessmentSummary: React.FC<{ record: AssessmentRecord }> = ({ record }) =
         Your requirements so far
       </h2>
       <p className="text-sm text-brand-charcoal/70 font-light leading-relaxed mb-6">
-        This is a record of what you said. It is not a staffing recommendation or a price. A weekly total is shown
-        only when you gave one, or when you gave both a daily figure and the number of days. Anything not stated is
-        marked as not confirmed.
+        This is a record of what you said. An hour figure is your estimate, not a validated workload, and it is not a
+        staffing recommendation or a price. A weekly total is shown only when you gave one, or when you gave both a
+        daily figure and the number of days. Anything not stated is marked as not confirmed.
       </p>
       <div className="space-y-6">
         {sections.map((section) => (

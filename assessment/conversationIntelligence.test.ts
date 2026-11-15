@@ -31,9 +31,9 @@ describe('conversation memory', () => {
     expect(time?.weeklyHours).toBeNull();
     expect(time?.needsClarification).toBe(true);
     expect(applied.record.staffing.location.value).toBe('remote');
-    expect(applied.assistantMessage).toMatch(/two hours per day|2 hours per day/i);
-    expect(applied.assistantMessage).toMatch(/how many days a week/i);
-    expect(applied.assistantMessage).not.toMatch(/how much active working time/i);
+    expect(applied.record.workload.assessed.value).toBeNull();
+    expect(applied.assistantMessage).toMatch(/which parts of the work/i);
+    expect(applied.assistantMessage).not.toMatch(/how many hours|how many days|how much active working time/i);
     expect(applied.assistantMessage).not.toMatch(/2 hours per week/i);
   });
 
@@ -247,9 +247,9 @@ describe('conversation quality', () => {
     const first = reply(createEmptyRecord(), [], 'The diary takes two hours per week.', 'Noted.');
     const corrected = reply(first.record, first.asked, 'I said two hours per day, not per week.', 'Thank you. How many hours do you need?');
     expect(corrected.record.workload.activeTime.value?.unit).toBe('day');
+    expect(corrected.record.workload.assessed.value).toBeNull();
     expect(corrected.assistantMessage).not.toMatch(/^thank you/i);
-    expect(corrected.assistantMessage).toMatch(/2 hours per day/i);
-    expect(corrected.assistantMessage).toMatch(/how many days a week/i);
+    expect(corrected.assistantMessage).not.toMatch(/how many hours|how many days/i);
   });
 
   it('drops a generic thank-you and keeps one real question', () => {

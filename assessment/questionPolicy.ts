@@ -1,4 +1,4 @@
-import type { EssentialGap } from './coverage';
+import { hasResponsibilities, type EssentialGap } from './coverage';
 import type { AssessmentRecord } from './types';
 
 const SAFE_CLOSE =
@@ -40,9 +40,9 @@ export function partOfDayPreference(text: string): string | null {
   if (/\btakes most of\b/i.test(text) && !/\b(available|availability|reachable|cover)\b/i.test(text)) return null;
   const lateAfternoon = /\blate afternoon\b/i.test(text);
   const parts = [
-    /\bmorning\b/i.test(text) ? 'morning' : null,
-    lateAfternoon ? 'late afternoon' : /\bafternoon\b/i.test(text) ? 'afternoon' : null,
-    /\bevening\b/i.test(text) ? 'evening' : null,
+    /\bmornings?\b/i.test(text) ? 'morning' : null,
+    lateAfternoon ? 'late afternoon' : /\bafternoons?\b/i.test(text) ? 'afternoon' : null,
+    /\bevenings?\b/i.test(text) ? 'evening' : null,
   ].filter((part): part is string => Boolean(part));
   if (!parts.length) return null;
   const aboutAvailability = /\b(available|availability|reachable|cover|prefer|needed|need someone|in the)\b/i.test(text);
@@ -59,14 +59,22 @@ export function isPartOfDayWindow(value: string): boolean {
 /** Lines the model must treat as settled. These come from the record, not from the transcript window. */
 export function doNotAsk(record: AssessmentRecord): string[] {
   const lines: string[] = [];
-  const time = record.workload.activeTime.value;
-  if (time?.needsClarification) {
+  const role = record.executive.requestedRole?.value;
+  if (role) {
     lines.push(
-      `Active working time is already ${time.stated}. Ask only how many days a week that applies to. Do not ask for the hours again, and do not turn them into a weekly total.`,
+      `They asked for a ${role}. That is the role they named, not confirmation it is the right fit. Do not assume it, and do not recommend a different role.`,
     );
-  } else if (time) {
-    const calculated = time.unit === 'day' && time.weeklyHours != null ? ` ${time.weeklyHours} hours per week is calculated from that, not a separate figure.` : '';
-    lines.push(`Active working time is already ${time.stated}.${calculated} Do not ask for it again.`);
+  }
+  if (!hasResponsibilities(record)) {
+    lines.push('Responsibilities are not yet known. Ask what they want taken off their plate before hours, days or availability.');
+  }
+  const time = record.workload.activeTime.value;
+  if (time) {
+    const calculated =
+      time.unit === 'day' && time.weeklyHours != null ? ` A weekly figure of ${time.weeklyHours} hours was calculated from their estimate, not assessed from the work.` : '';
+    lines.push(
+      `Visitor hour estimate, not a validated workload: ${time.stated}.${time.needsClarification ? ' Days were not stated, so it has not been converted into a week.' : ''}${calculated} Do not ask for the hours again. Assessed workload is not calculated yet. Do not invent a higher or lower figure.`,
+    );
   }
   if ((record.project.status ?? 'unknown') === 'not_applicable') {
     lines.push('Project support is not applicable. Do not ask about projects again. Follow the peaks or other work they did describe.');
@@ -95,7 +103,7 @@ export function rememberedWording(record: AssessmentRecord): string {
   return lines.length ? lines.map((line) => `- ${line}`).join('\n') : 'None yet.';
 }
 
-type Redirect = 'hours' | 'projects' | 'clock' | 'software' | 'repeat';
+type Redirect = 'hours' | 'projects' | 'clock' | 'software' | 'repeat' | 'premature';
 
 export function composeAssistantReply(input: {
   message: string;
@@ -107,7 +115,7 @@ export function composeAssistantReply(input: {
   const asked = [...input.asked];
   let text = input.message.replace(/\s+/g, ' ').trim().slice(0, 1200);
   text = text.replace(/^(?:thank you|thanks)(?:\s+for\s+(?:that|sharing(?:\s+that)?|your (?:reply|answer)))?[.!]\s+/i, '');
-  const redirect = redirectReason(text, input.record);
+  const redirect = redirectReason(text, input.record, asked);
 
   if (!text || BLOCKED_REPLY.test(text) || redirect) {
     text = input.complete ? SAFE_CLOSE : nextQuestion(input.record, input.gap, asked, redirect);
@@ -129,14 +137,51 @@ function askedNeedsClose(record: AssessmentRecord, gap: EssentialGap | null): bo
   return gap == null && (record.statements?.length ?? 0) > 0;
 }
 
-function redirectReason(message: string, record: AssessmentRecord): Redirect | null {
+function redirectReason(message: string, record: AssessmentRecord, asked: string[]): Redirect | null {
   if (!message.includes('?')) return null;
+  if (reopensClosedProjects(message, record)) return 'projects';
+  if (!hasResponsibilities(record) && !asksAboutTheWork(message)) return 'premature';
+  if (openWorkDrivers(record, asked).length > 0 && !addressesOpenDriver(message, record, asked)) return 'premature';
+  if (prematureScheduling(message, record, asked)) return 'premature';
+  if (reopensCorrectedUnit(message, record)) return 'hours';
   if (repeatsKnownHours(message, record)) return 'hours';
-  if (asksForProjects(message, record)) return 'projects';
-  if (demandsClockTimes(message) && indicativeWindow(record)) return 'clock';
+  if (demandsClockTimes(message)) return 'clock';
   if (record.process.skipped && /\b(software|systems|which tools|automation)\b/i.test(message)) return 'software';
-  if ((record.executive.mentioned || record.operations.mentioned) && /\bwhich parts of the work\b/i.test(message)) return 'repeat';
+  if (hasResponsibilities(record) && /\bwhich parts of the work\b/i.test(message)) return 'repeat';
   return null;
+}
+
+/** Duties are still unknown, so only a question about the work itself should stand. */
+function asksAboutTheWork(message: string): boolean {
+  return /take off your plate|which parts of the work|what would you (?:actually )?want this person to take on/i.test(message);
+}
+
+function reopensClosedProjects(message: string, record: AssessmentRecord): boolean {
+  const status = record.project.status ?? 'unknown';
+  if (status === 'unknown') return false;
+  if (!/\bprojects?\b/i.test(message)) return false;
+  return !/\b(group travel|busier|during those|additional support|how many|chasing|tracking)\b/i.test(message);
+}
+
+function prematureScheduling(message: string, record: AssessmentRecord, asked: string[]): boolean {
+  const asksHours = /\b(how many hours|hours per day or week|hours a day or a week|expect the\b.{0,80}\bto work|active working time)\b/i.test(
+    message,
+  );
+  const asksDays = /\bhow many days\b/i.test(message);
+  const asksAvailability = /\b(availability|specific times|flexibility|when would someone need to be available)\b/i.test(message);
+  if (!asksHours && !asksDays && !asksAvailability) return false;
+  if (!hasResponsibilities(record)) return true;
+  if (openWorkDrivers(record, asked).length > 0) return true;
+  if (asksHours && record.workload.activeTime.value) return true;
+  return false;
+}
+
+function reopensCorrectedUnit(message: string, record: AssessmentRecord): boolean {
+  const time = record.workload.activeTime.value;
+  if (!record.workload.activeTime.revised) return false;
+  if (time?.unit === 'day') return /\b(per week|weekly)\b/i.test(message);
+  if (time?.unit === 'week') return /\b(per day|daily)\b/i.test(message);
+  return false;
 }
 
 function repeatsKnownHours(message: string, record: AssessmentRecord): boolean {
@@ -146,32 +191,107 @@ function repeatsKnownHours(message: string, record: AssessmentRecord): boolean {
   return /\b(how much active|how many hours|active working time|per day or per week|is that per day|how long does(?: this| that)? take)\b/i.test(message);
 }
 
-function asksForProjects(message: string, record: AssessmentRecord): boolean {
-  if ((record.project.status ?? 'unknown') !== 'not_applicable') return false;
-  if (/\bgroup travel\b/i.test(message) && /\b(during those|additional support|busier)\b/i.test(message)) return false;
-  return /\bprojects?\b/i.test(message) && /\b(do you have|are there|any other|besides|what projects|which projects|ongoing tasks)\b/i.test(message);
+/** Named duties still need one material follow-up. This is the topic state, not a script of every category. */
+export function openWorkDrivers(record: AssessmentRecord, asked: string[]): string[] {
+  const duties = record.executive.responsibilities.value ?? [];
+  const evidence = (record.workload.evidence ?? []).map((note) => note.text).join(' ');
+  const pending: string[] = [];
+  if (duties.includes('Inbox management') && !asked.includes('inbox-depth') && !/\d+\s+emails|triage|more than triage|repl/i.test(evidence)) {
+    pending.push('inbox-depth');
+  }
+  const diaryNamed = duties.some((duty) => /diary|calendar|scheduling|client meeting/i.test(duty));
+  if (diaryNamed && !asked.includes('diary-depth') && !/external|internal meetings|meetings a week|\d+\s+meetings/i.test(evidence)) {
+    pending.push('diary-depth');
+  }
+  if (duties.includes('Meeting minutes') && !asked.includes('minutes-depth') && !/full note|actions afterwards|in the meeting/i.test(evidence)) {
+    pending.push('minutes-depth');
+  }
+  const chasingNamed = (record.project.notes.value ?? []).some((note) => /chasing/i.test(note));
+  const projectsNamed = (record.project.status ?? 'unknown') !== 'not_applicable' && (record.project.notes.value ?? []).some((note) => note !== 'None' && !/chasing/i.test(note));
+  if ((chasingNamed || projectsNamed) && !asked.includes('project-depth') && !/in more detail|regular part|mostly colleagues/i.test(evidence)) {
+    pending.push('project-depth');
+  }
+  if ((record.operations.notes.value?.length ?? 0) > 0 && !asked.includes('ops-depth') && !/regular|each week|weekly|seasonal/i.test(evidence)) {
+    pending.push('ops-depth');
+  }
+  if (record.workload.peak.value && !asked.includes('peak') && !/extra support|during those/i.test(evidence)) pending.push('peak');
+  return pending;
+}
+
+function addressesOpenDriver(message: string, record: AssessmentRecord, asked: string[]): boolean {
+  if (/\b(how many hours|how many days|availability|what time|exact time)\b/i.test(message)) return false;
+  const pending = openWorkDrivers(record, asked);
+  if (pending.includes('inbox-depth') && /\b(emails?|inbox|triage|reply|replies)\b/i.test(message)) return true;
+  if (pending.includes('diary-depth') && /\b(meetings?|diary|internal|external)\b/i.test(message)) return true;
+  if (pending.includes('minutes-depth') && /\bminutes\b/i.test(message)) return true;
+  if (pending.includes('project-depth') && /\b(chas\w*|stakeholders|projects?)\b/i.test(message)) return true;
+  if (pending.includes('ops-depth') && /\b(onboarding|process|recurring|operational)\b/i.test(message)) return true;
+  if (pending.includes('peak') && /\b(peak|busier|season)\b/i.test(message)) return true;
+  return false;
 }
 
 function demandsClockTimes(message: string): boolean {
   return /\b(what time|exact time|start and finish|specific times|from when|until when|which hours|o'clock)\b/i.test(message);
 }
 
-function indicativeWindow(record: AssessmentRecord): boolean {
-  const window = record.availability.window.value;
-  return Boolean(window && isPartOfDayWindow(window));
-}
-
 function nextQuestion(record: AssessmentRecord, gap: EssentialGap | null, asked: string[], redirect: Redirect | null): string {
-  if (gap === 'schedule') return scheduleQuestion(record, asked);
   if (redirect === 'projects' && peakFollowUpAvailable(record, asked)) {
     asked.push('peak');
     return PEAK_FOLLOW_UP;
   }
+  if (!hasResponsibilities(record)) return supportQuestion(record, asked);
+  const follow = takeFollowUp(record, asked);
+  if (follow) return follow;
+  if (gap === 'schedule') return scheduleQuestion(record, asked);
   if (!gap) {
     if (!asked.includes('close')) asked.push('close');
     return CLOSE_QUESTION;
   }
   return gapQuestion(gap, record, asked);
+}
+
+function supportQuestion(record: AssessmentRecord, asked: string[]): string {
+  if (!asked.includes('support')) {
+    asked.push('support');
+    if (record.executive.requestedRole?.value === 'Executive Assistant') {
+      return 'What would you like the EA to take off your plate? For example, inbox and diary management, client meeting coordination, document preparation or following up with your team?';
+    }
+    return 'Which parts of the work are taking the time?';
+  }
+  if (!asked.includes('support-followup')) asked.push('support-followup');
+  return 'That hour figure is only a starting estimate. What would you actually want this person to take on?';
+}
+
+/** Enough is known to stop: the main duties are named and each one has been followed up or already described. */
+export function canFinish(record: AssessmentRecord, asked: string[]): boolean {
+  return hasResponsibilities(record) && openWorkDrivers(record, asked).length === 0;
+}
+
+function takeFollowUp(record: AssessmentRecord, asked: string[]): string | null {
+  const pending = openWorkDrivers(record, asked);
+  const latest = record.statements?.at(-1)?.text ?? '';
+  const peakIsNew = Boolean(record.workload.peak.evidence && record.workload.peak.evidence === latest && pending.includes('peak'));
+  const minutesIsNew = pending.includes('minutes-depth') && /\bminutes\b/i.test(latest);
+  const next = peakIsNew ? 'peak' : minutesIsNew ? 'minutes-depth' : pending[0];
+  if (!next) return null;
+  asked.push(next);
+  if (next === 'inbox-depth') {
+    return 'You mentioned the inbox. Roughly how many emails come in, how much needs a reply rather than triage, and how quickly those replies are expected? A rough sense is enough.';
+  }
+  if (next === 'diary-depth') {
+    return 'You mentioned the diary. Roughly how many meetings are in a typical week, and are they mostly internal or with people outside the firm?';
+  }
+  if (next === 'minutes-depth') {
+    return 'You mentioned minutes. Do you need someone in the meeting to write them, and is that a full note or just the actions afterwards?';
+  }
+  if (next === 'project-depth') {
+    return 'You mentioned project coordination. Roughly how many are active, and is the work mostly chasing people, tracking actions, or both?';
+  }
+  if (next === 'ops-depth') {
+    return 'You mentioned operational coordination. Is that a regular part of the week, or mainly at certain points in the year?';
+  }
+  if (record.workload.peak.value && /group travel/i.test(record.workload.peak.value)) return PEAK_FOLLOW_UP;
+  return 'You mentioned busier periods. What extra support do you need then, compared with a normal week?';
 }
 
 function peakFollowUpAvailable(record: AssessmentRecord, asked: string[]): boolean {
