@@ -1,7 +1,9 @@
+import { say } from './messageFormat';
 import { createEmptyRecord, type AssessmentSession } from './types';
 
-export const WELCOME =
-  "To start, could you tell me a little about your business and what's prompted you to look for operational support?";
+export const WELCOME = say({
+  question: "To start, could you tell me a little about your business and what's prompted you to look for operational support?",
+});
 
 /** A local starting point. The first interpretation happens on the server. */
 export function createConversation(openingNote: string | null): AssessmentSession {

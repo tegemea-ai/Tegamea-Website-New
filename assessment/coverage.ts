@@ -128,9 +128,12 @@ function workloadTimeItems(record: AssessmentRecord): ReviewSection['items'] {
       kind: 'confirmed',
     },
     {
-      label: 'Assessed workload',
-      detail: record.workload.assessed?.value ?? 'Not calculated. The estimate has not been compared with the work described.',
-      kind: record.workload.assessed?.value ? 'provisional' : 'unknown',
+      label: record.workload.assessment?.complete ? 'Assessed workload' : 'Workload reading',
+      detail:
+        record.workload.assessment?.summary ??
+        record.workload.assessed?.value ??
+        'Not calculated. The estimate has not been compared with the work described.',
+      kind: record.workload.assessment?.complete ? 'derived' : record.workload.assessment ? 'provisional' : 'unknown',
     },
   ];
   const calculated = calculatedWeeklyDetail(time);

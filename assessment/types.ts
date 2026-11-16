@@ -55,6 +55,29 @@ export interface WorkloadEvidenceNote {
   text: string;
 }
 
+/** How a workload component was produced. A subtotal of benchmark rows is not a complete assessment. */
+export type WorkComponentStatus = 'benchmark' | 'provisional' | 'variable' | 'unquantified' | 'immaterial';
+
+export interface WorkComponent {
+  id: string;
+  label: string;
+  status: WorkComponentStatus;
+  /** Set only when an approved rule gives a range. Provisional ranges stay out of the subtotal. */
+  lowMinutes: number | null;
+  highMinutes: number | null;
+  period: 'day' | 'week' | null;
+  note: string;
+}
+
+export interface WorkloadAssessment {
+  complete: boolean;
+  components: WorkComponent[];
+  /** Weekly minutes from benchmark-based components only. Null when none are weekly yet. */
+  subtotalLowMinutes: number | null;
+  subtotalHighMinutes: number | null;
+  summary: string;
+}
+
 export type ProgressStage = 'business' | 'workload' | 'availability' | 'preferences' | 'review';
 
 export type StaffingModel = 'outsourced' | 'permanent' | 'comparing' | 'unsure';
@@ -104,8 +127,10 @@ export interface AssessmentRecord {
     /** Same estimate, held separately so a later assessment cannot be mistaken for what they asked for. */
     requestedTime: Fact<ActiveWorkingTime>;
     evidence: WorkloadEvidenceNote[];
-    /** Left unset until a later phase compares the estimate with the evidence. */
+    /** A complete assessed range only. Partial readings stay on `assessment` and do not fill this. */
     assessed: Fact<string>;
+    /** Deterministic reading. A quantified subtotal is labelled as incomplete when material work remains. */
+    assessment: WorkloadAssessment | null;
     /** Set only when the visitor agrees a figure. Not calculated here. */
     agreed: Fact<ActiveWorkingTime>;
     pattern: Fact<string>;
@@ -129,6 +154,8 @@ export interface AssessmentRecord {
     startDate: Fact<string>;
     existingSupport: Fact<string>;
     constraints: Fact<string>;
+    /** Part-time or full-time, when the visitor is describing the arrangement rather than the work. */
+    engagement: Fact<string>;
   };
   process: {
     skipped: boolean;
@@ -191,6 +218,7 @@ export function createEmptyRecord(): AssessmentRecord {
       requestedTime: unknownFact(),
       evidence: [],
       assessed: unknownFact(),
+      assessment: null,
       agreed: unknownFact(),
       pattern: unknownFact(),
       peak: unknownFact(),
@@ -213,6 +241,7 @@ export function createEmptyRecord(): AssessmentRecord {
       startDate: unknownFact(),
       existingSupport: unknownFact(),
       constraints: unknownFact(),
+      engagement: unknownFact(),
     },
     process: {
       skipped: false,

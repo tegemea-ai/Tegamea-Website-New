@@ -1,4 +1,5 @@
 import { hasResponsibilities, type EssentialGap } from './coverage';
+import { say } from './messageFormat';
 import type { AssessmentRecord } from './types';
 
 const SAFE_CLOSE =
@@ -8,11 +9,14 @@ const BLOCKED_REPLY = /£|\$\s?\d|\bper hour\b|\bi recommend\b|\brecruitment fee
 
 const FILLER = /^(thanks?( you)?|thank you|noted|understood|great|okay|ok|sure|got it|of course)[.!]?\s*$/i;
 
-const PEAK_FOLLOW_UP =
-  'You mentioned that group travel creates busier periods. What additional support do you typically need during those times?';
+const PEAK_FOLLOW_UP = say({
+  before: 'You mentioned that group travel creates busier periods.',
+  question: 'What additional support do you typically need during those times?',
+});
 
-const CLOSE_QUESTION =
-  "Before I put together your recommendation, is there anything else taking up your time that you'd ideally like to delegate?";
+const CLOSE_QUESTION = say({
+  question: "Before I put together your recommendation, is there anything else taking up your time that you'd ideally like to delegate?",
+});
 
 export function declinesProjects(text: string): boolean {
   return (
@@ -90,6 +94,12 @@ export function doNotAsk(record: AssessmentRecord): string[] {
       `Availability preference is ${record.availability.window.value}. Do not ask for exact start or finish times. Those can be agreed during onboarding.`,
     );
   }
+  if (record.workload.assessment && !record.workload.assessment.complete) {
+    lines.push(`Workload reading, not a complete assessment: ${record.workload.assessment.summary}`);
+  }
+  if (record.staffing.engagement?.value) {
+    lines.push(`Working arrangement mentioned: ${record.staffing.engagement.value}. Do not treat this as the pattern of a task unless they said so.`);
+  }
   if (record.workload.peak.value) lines.push(`Peaks already noted: ${record.workload.peak.value}`);
   if (record.process.skipped) lines.push('Software and process detail was skipped or is unknown. Do not ask again.');
   for (const assumption of record.assumptions ?? []) {
@@ -113,12 +123,14 @@ export function composeAssistantReply(input: {
   asked: string[];
 }): { text: string; asked: string[] } {
   const asked = [...input.asked];
-  let text = input.message.replace(/\s+/g, ' ').trim().slice(0, 1200);
+  let text = input.message.replace(/[^\S\n]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, 1200);
   text = text.replace(/^(?:thank you|thanks)(?:\s+for\s+(?:that|sharing(?:\s+that)?|your (?:reply|answer)))?[.!]\s+/i, '');
   const redirect = redirectReason(text, input.record, asked);
 
   if (!text || BLOCKED_REPLY.test(text) || redirect) {
     text = input.complete ? SAFE_CLOSE : nextQuestion(input.record, input.gap, asked, redirect);
+  } else {
+    rememberKeptQuestion(text, asked);
   }
 
   if (input.complete) {
@@ -140,6 +152,7 @@ function askedNeedsClose(record: AssessmentRecord, gap: EssentialGap | null): bo
 function redirectReason(message: string, record: AssessmentRecord, asked: string[]): Redirect | null {
   if (!message.includes('?')) return null;
   if (reopensClosedProjects(message, record)) return 'projects';
+  if (buildsOnUnsupported(message, record)) return 'premature';
   if (!hasResponsibilities(record) && !asksAboutTheWork(message)) return 'premature';
   if (openWorkDrivers(record, asked).length > 0 && !addressesOpenDriver(message, record, asked)) return 'premature';
   if (prematureScheduling(message, record, asked)) return 'premature';
@@ -152,6 +165,25 @@ function redirectReason(message: string, record: AssessmentRecord, asked: string
 }
 
 /** Duties are still unknown, so only a question about the work itself should stand. */
+function buildsOnUnsupported(message: string, record: AssessmentRecord): boolean {
+  const notes = record.operations.notes.value ?? [];
+  const generalOps = notes.some((note) => !/invoic|bookkeep/i.test(note));
+  if (/\boperational coordination\b/i.test(message) && !generalOps) return true;
+  if (record.staffing.engagement?.source === 'provisional' && /\b(throughout the year|weekly pattern|varies throughout)\b/i.test(message)) return true;
+  return false;
+}
+
+function rememberKeptQuestion(message: string, asked: string[]): void {
+  if (!message.includes('?')) return;
+  const mark = (id: string) => {
+    if (!asked.includes(id)) asked.push(id);
+  };
+  if (/\binvoic|bookkeep/i.test(message)) mark('books-depth');
+  if (/\b(how many meetings|typical week)\b/i.test(message) && /\b(diary|meeting|scheduling)\b/i.test(message)) mark('diary-depth');
+  if (/\b(internal|external)\b/i.test(message) && /\bmeetings?\b/i.test(message)) mark('diary-type');
+  if (/\bpart[- ]time\b/i.test(message) && /\bassistant\b/i.test(message)) mark('engagement-clarify');
+}
+
 function asksAboutTheWork(message: string): boolean {
   return /take off your plate|which parts of the work|what would you (?:actually )?want this person to take on/i.test(message);
 }
@@ -200,9 +232,16 @@ export function openWorkDrivers(record: AssessmentRecord, asked: string[]): stri
     pending.push('inbox-depth');
   }
   const diaryNamed = duties.some((duty) => /diary|calendar|scheduling|client meeting/i.test(duty));
-  if (diaryNamed && !asked.includes('diary-depth') && !/external|internal meetings|meetings a week|\d+\s+meetings/i.test(evidence)) {
-    pending.push('diary-depth');
-  }
+  const meetingKnown = /about \d+ meetings/i.test(evidence);
+  const meetingTyped = /\b(external|internal)\b/i.test(evidence);
+  if (diaryNamed && !meetingKnown && !asked.includes('diary-depth')) pending.push('diary-depth');
+  const ops = record.operations.notes.value ?? [];
+  const books = ops.some((note) => /invoic|bookkeep/i.test(note));
+  const generalOps = ops.some((note) => !/invoic|bookkeep/i.test(note));
+  const invoiceKnown = /invoice volume mentioned/i.test(evidence);
+  if (books && !invoiceKnown && !asked.includes('books-depth')) pending.push('books-depth');
+  else if (books && !invoiceKnown && record.staffing.engagement?.source === 'explicit' && !asked.includes('books-return')) pending.push('books-return');
+  if (diaryNamed && meetingKnown && !meetingTyped && !asked.includes('diary-type')) pending.push('diary-type');
   if (duties.includes('Meeting minutes') && !asked.includes('minutes-depth') && !/full note|actions afterwards|in the meeting/i.test(evidence)) {
     pending.push('minutes-depth');
   }
@@ -211,9 +250,8 @@ export function openWorkDrivers(record: AssessmentRecord, asked: string[]): stri
   if ((chasingNamed || projectsNamed) && !asked.includes('project-depth') && !/in more detail|regular part|mostly colleagues/i.test(evidence)) {
     pending.push('project-depth');
   }
-  if ((record.operations.notes.value?.length ?? 0) > 0 && !asked.includes('ops-depth') && !/regular|each week|weekly|seasonal/i.test(evidence)) {
-    pending.push('ops-depth');
-  }
+  if (generalOps && !asked.includes('ops-depth') && !/regular|each week|weekly|seasonal/i.test(evidence)) pending.push('ops-depth');
+  if (record.staffing.engagement?.source === 'provisional' && !asked.includes('engagement-clarify')) pending.unshift('engagement-clarify');
   if (record.workload.peak.value && !asked.includes('peak') && !/extra support|during those/i.test(evidence)) pending.push('peak');
   return pending;
 }
@@ -222,7 +260,11 @@ function addressesOpenDriver(message: string, record: AssessmentRecord, asked: s
   if (/\b(how many hours|how many days|availability|what time|exact time)\b/i.test(message)) return false;
   const pending = openWorkDrivers(record, asked);
   if (pending.includes('inbox-depth') && /\b(emails?|inbox|triage|reply|replies)\b/i.test(message)) return true;
-  if (pending.includes('diary-depth') && /\b(meetings?|diary|internal|external)\b/i.test(message)) return true;
+  if (pending.includes('books-depth') && /\b(invoic\w*|book\s*keep\w*)\b/i.test(message)) return true;
+  if (pending.includes('books-return') && /\b(invoic\w*|book\s*keep\w*)\b/i.test(message)) return true;
+  if (pending.includes('engagement-clarify') && /\bpart[- ]time\b/i.test(message)) return true;
+  if (pending.includes('diary-depth') && /\b(meetings?|diary management|scheduling)\b/i.test(message)) return true;
+  if (pending.includes('diary-type') && /\b(internal|external|meetings?)\b/i.test(message)) return true;
   if (pending.includes('minutes-depth') && /\bminutes\b/i.test(message)) return true;
   if (pending.includes('project-depth') && /\b(chas\w*|stakeholders|projects?)\b/i.test(message)) return true;
   if (pending.includes('ops-depth') && /\b(onboarding|process|recurring|operational)\b/i.test(message)) return true;
@@ -254,12 +296,18 @@ function supportQuestion(record: AssessmentRecord, asked: string[]): string {
   if (!asked.includes('support')) {
     asked.push('support');
     if (record.executive.requestedRole?.value === 'Executive Assistant') {
-      return 'What would you like the EA to take off your plate? For example, inbox and diary management, client meeting coordination, document preparation or following up with your team?';
+      return say({
+        question: 'What would you like the EA to take off your plate?',
+        after: 'For example, inbox and diary management, client meeting coordination, document preparation or following up with your team.',
+      });
     }
-    return 'Which parts of the work are taking the time?';
+    return say({ question: 'Which parts of the work are taking the time?' });
   }
   if (!asked.includes('support-followup')) asked.push('support-followup');
-  return 'That hour figure is only a starting estimate. What would you actually want this person to take on?';
+  return say({
+    before: 'That hour figure is only a starting estimate.',
+    question: 'What would you actually want this person to take on?',
+  });
 }
 
 /** Enough is known to stop: the main duties are named and each one has been followed up or already described. */
@@ -276,22 +324,60 @@ function takeFollowUp(record: AssessmentRecord, asked: string[]): string | null 
   if (!next) return null;
   asked.push(next);
   if (next === 'inbox-depth') {
-    return 'You mentioned the inbox. Roughly how many emails come in, how much needs a reply rather than triage, and how quickly those replies are expected? A rough sense is enough.';
+    return say({
+      before: 'You mentioned inbox management.',
+      question: 'Roughly how many emails come in, how much needs a reply rather than triage, and how quickly those replies are expected?',
+      after: 'A rough sense is enough.',
+    });
   }
   if (next === 'diary-depth') {
-    return 'You mentioned the diary. Roughly how many meetings are in a typical week, and are they mostly internal or with people outside the firm?';
+    return say({
+      before: 'You mentioned diary management.',
+      question: 'Roughly how many meetings are in a typical week, and are they mostly internal or with people outside the firm?',
+    });
+  }
+  if (next === 'diary-type') {
+    return say({
+      before: 'You have already given a meeting count.',
+      question: 'Are those mostly internal, or with people outside the firm?',
+    });
+  }
+  if (next === 'books-depth' || next === 'books-return') {
+    return say({
+      before: 'You mentioned invoicing as part of the bookkeeping.',
+      question: 'Roughly how many invoices are there in a typical week or month?',
+      after: 'A rough sense is enough.',
+    });
+  }
+  if (next === 'engagement-clarify') {
+    return say({
+      before: 'Part time can describe the assistant’s working arrangement, rather than the pattern of the work.',
+      question: 'Do you mean the assistant should work part time?',
+    });
   }
   if (next === 'minutes-depth') {
-    return 'You mentioned minutes. Do you need someone in the meeting to write them, and is that a full note or just the actions afterwards?';
+    return say({
+      before: 'You mentioned meeting minutes.',
+      question: 'Do you need someone in the meeting to write them, and is that a full note or just the actions afterwards?',
+    });
   }
   if (next === 'project-depth') {
-    return 'You mentioned project coordination. Roughly how many are active, and is the work mostly chasing people, tracking actions, or both?';
+    return say({
+      before: 'You mentioned project coordination.',
+      question: 'Roughly how many are active, and is the work mostly chasing people, tracking actions, or both?',
+    });
   }
   if (next === 'ops-depth') {
-    return 'You mentioned operational coordination. Is that a regular part of the week, or mainly at certain points in the year?';
+    return say({
+      before: 'You mentioned operational coordination.',
+      question: 'Is that a regular part of the week, or mainly at certain points in the year?',
+    });
   }
   if (record.workload.peak.value && /group travel/i.test(record.workload.peak.value)) return PEAK_FOLLOW_UP;
-  return 'You mentioned busier periods. What extra support do you need then, compared with a normal week?';
+  return say({
+    before: 'You mentioned busier periods.',
+    question: 'What extra support do you need then, compared with a normal week?',
+  });
 }
 
 function peakFollowUpAvailable(record: AssessmentRecord, asked: string[]): boolean {
@@ -305,21 +391,31 @@ function peakFollowUpAvailable(record: AssessmentRecord, asked: string[]): boole
 function scheduleQuestion(record: AssessmentRecord, asked: string[]): string {
   if (!asked.includes('schedule')) asked.push('schedule');
   const stated = record.workload.activeTime.value?.stated ?? 'those daily hours';
-  return `You mentioned needing ${stated}. How many days a week would you need that? I won't assume a five-day week.`;
+  return say({
+    before: `You mentioned needing ${stated}.`,
+    question: "How many days a week would you need that?",
+    after: "I won't assume a five-day week.",
+  });
 }
 
 function gapQuestion(gap: EssentialGap, record: AssessmentRecord, asked: string[]): string {
   if (!asked.includes(gap)) asked.push(gap);
   if (gap === 'schedule') return scheduleQuestion(record, asked);
   if (gap === 'business') {
-    return "Could you tell me a little about your business, and what's prompted you to look for operational support?";
+    return say({ question: "Could you tell me a little about your business, and what's prompted you to look for operational support?" });
   }
-  if (gap === 'support') return 'Which parts of the work are taking the time?';
+  if (gap === 'support') return say({ question: 'Which parts of the work are taking the time?' });
   if (gap === 'workload') {
-    return 'Roughly how much active working time does this take, and is that per day or per week? If you are not sure of a number, say so.';
+    return say({
+      question: 'Roughly how much active working time does this take, and is that per day or per week?',
+      after: 'If you are not sure of a number, say so.',
+    });
   }
   if (gap === 'availability') {
-    return 'When would someone need to be available — for example mornings, across the working day, or only while the work is being done? Exact start and finish times can wait.';
+    return say({
+      question: 'When would someone need to be available — for example mornings, across the working day, or only while the work is being done?',
+      after: 'Exact start and finish times can wait.',
+    });
   }
-  return 'Are you leaning towards outsourced support, hiring someone, or are you still comparing the two?';
+  return say({ question: 'Are you leaning towards outsourced support, hiring someone, or are you still comparing the two?' });
 }

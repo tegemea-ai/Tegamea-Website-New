@@ -1,4 +1,5 @@
 import React from 'react';
+import { assistantParagraphs } from '../../assessment/messageFormat';
 import type { ChatMessage } from '../../assessment/types';
 
 const Message: React.FC<{ message: ChatMessage }> = ({ message }) => {
@@ -16,9 +17,25 @@ const Message: React.FC<{ message: ChatMessage }> = ({ message }) => {
       <p className={`text-[10px] uppercase tracking-[0.2em] font-bold mb-1.5 ${fromVisitor ? 'text-brand-gold' : 'text-brand-gold'}`}>
         {fromVisitor ? 'You' : 'Tegemea'}
       </p>
-      <p className={`text-sm leading-relaxed whitespace-pre-wrap ${fromVisitor ? 'font-light text-white/95' : 'font-light'}`}>
-        {message.text}
-      </p>
+      {fromVisitor ? (
+        <p className="text-sm leading-relaxed whitespace-pre-wrap font-light text-white/95">{message.text}</p>
+      ) : (
+        <div className="space-y-2">
+          {assistantParagraphs(message.text).map((paragraph, index) => (
+            <p key={index} className="text-sm leading-relaxed font-light text-brand-charcoal">
+              {paragraph.map((run, runIndex) =>
+                run.bold ? (
+                  <strong key={runIndex} className="font-semibold">
+                    {run.text}
+                  </strong>
+                ) : (
+                  <span key={runIndex}>{run.text}</span>
+                ),
+              )}
+            </p>
+          ))}
+        </div>
+      )}
     </article>
   );
 };

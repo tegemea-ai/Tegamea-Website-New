@@ -1,4 +1,5 @@
 import { essentialGaps, type EssentialGap } from './coverage';
+import { assessWorkload } from './workload/assess';
 import {
   affirmsProjects,
   canFinish,
@@ -273,11 +274,16 @@ export function applyModelTurn(record: AssessmentRecord, visitorText: string, mo
   applyLabels(next, text, model);
   applyRequestedRole(next, text);
   applyWorkingTime(next, text, model, gapBefore);
-  applyWorkloadEvidence(next, text);
+  applyWorkloadEvidence(next, text, asked[asked.length - 1]);
+  applyEngagement(next, text, asked);
   applyAvailability(next, text, model, gapBefore);
   applyStaffing(next, text, model);
   applyProcess(next, text, model);
   noteRoleFit(next);
+  next.workload.assessment = assessWorkload(next);
+  if (next.workload.assessment?.complete && next.workload.assessment.summary) {
+    next.workload.assessed = explicitFact(next.workload.assessment.summary, text, Boolean(next.workload.assessed.value));
+  }
 
   const nextAsked = [...asked];
   const remember = (id: string) => {
@@ -356,7 +362,11 @@ export function summariseRecord(record: AssessmentRecord): string {
       : record.workload.uncertainty.value
         ? 'Visitor hour estimate: unknown'
         : '',
-    time || (record.workload.evidence ?? []).length ? 'Assessed workload: not calculated' : '',
+    record.workload.assessment?.summary
+      ? `Workload reading: ${record.workload.assessment.summary}`
+      : time || (record.workload.evidence ?? []).length
+        ? 'Assessed workload: not calculated'
+        : '',
     (record.workload.evidence ?? []).length ? `Workload evidence: ${record.workload.evidence.map((note) => note.text).join(' ')}` : '',
     factLine('Peaks', record.workload.peak),
     factLine('Availability', record.availability.window),
@@ -581,6 +591,7 @@ const EXECUTIVE: Signal[] = [
   { label: 'Travel coordination', pattern: /\btravel\b/i },
   { label: 'Scheduling', pattern: /\bschedul\w*\b|\brearrang\w*\s+meetings?\b/i },
   { label: 'Client meeting coordination', pattern: /\bclient meetings?\b|\bmeeting coordination\b/i },
+  { label: 'Document preparation', pattern: /\bdocuments?\b|\bdocument preparation\b/i },
 ];
 
 const PROJECT: Signal[] = [
@@ -595,6 +606,7 @@ const OPERATIONS: Signal[] = [
   { label: 'Client onboarding', pattern: /\bonboarding\b/i },
   { label: 'Supplier coordination', pattern: /\bsuppliers?\b/i },
   { label: 'Invoicing and payment follow-up', pattern: /\binvoic(?:e|es|ing)\b|\bpayment follow[- ]?ups?\b/i },
+  { label: 'Bookkeeping', pattern: /\bbook\s*keep(?:ing|er)?\b/i },
   { label: 'Recruitment administration', pattern: /\brecruitment admin\b/i },
   { label: 'CRM administration', pattern: /\bcrm\b/i },
 ];
@@ -716,6 +728,8 @@ function normaliseRecord(record: AssessmentRecord): AssessmentRecord {
   if (!Array.isArray(record.workload.evidence)) record.workload.evidence = [];
   if (!record.workload.assessed) record.workload.assessed = unknownFact();
   if (!record.workload.agreed) record.workload.agreed = unknownFact();
+  if (record.workload.assessment === undefined) record.workload.assessment = null;
+  if (!record.staffing.engagement) record.staffing.engagement = unknownFact();
   return record;
 }
 
@@ -736,15 +750,43 @@ function requestedRoleFromText(text: string): string | null {
   return null;
 }
 
-function applyWorkloadEvidence(record: AssessmentRecord, text: string): void {
+function applyEngagement(record: AssessmentRecord, text: string, asked: string[]): void {
+  const pending = asked[asked.length - 1];
+  if (pending === 'engagement-clarify') {
+    if (/\b(no|not)\b/i.test(text)) {
+      record.staffing.engagement = unknownFact();
+      return;
+    }
+    if (/\b(yes|assistant|part[- ]time)\b/i.test(text)) {
+      record.staffing.engagement = explicitFact('part-time', text, Boolean(record.staffing.engagement.value));
+    }
+    return;
+  }
+  if (!/\bpart[- ]time\b/i.test(text) && !/\bfull[- ]time\b/i.test(text)) return;
+  const describesTheWork = /\b(invoic|book\s*keep|season|throughout the year|every week|each week)\b/i.test(text);
+  if (describesTheWork && text.length > 80) return;
+  const value = /\bfull[- ]time\b/i.test(text) ? 'full-time' : 'part-time';
+  record.staffing.engagement = {
+    value,
+    source: describesTheWork ? 'explicit' : 'provisional',
+    confidence: describesTheWork ? 'high' : 'low',
+    evidence: text,
+    revised: Boolean(record.staffing.engagement.value),
+  };
+  if (!describesTheWork) {
+    addAssumption(record, 'Part time is taken as a possible staffing arrangement, not as the pattern of the work, until they confirm it.', 'staffing');
+  }
+}
+
+function applyWorkloadEvidence(record: AssessmentRecord, text: string, pending?: string): void {
   if (!Array.isArray(record.workload.evidence)) record.workload.evidence = [];
-  for (const note of evidenceFromText(text)) {
+  for (const note of evidenceFromText(text, pending)) {
     if (record.workload.evidence.some((item) => item.text === note)) continue;
     record.workload.evidence.push({ id: `e${record.workload.evidence.length + 1}`, text: note });
   }
 }
 
-function evidenceFromText(text: string): string[] {
+function evidenceFromText(text: string, pending?: string): string[] {
   const notes: string[] = [];
   const emails = text.match(/\b(\d{1,4})\s+emails?\b/i);
   if (emails) notes.push(`Inbox volume mentioned: about ${emails[1]} emails.`);
@@ -766,8 +808,22 @@ function evidenceFromText(text: string): string[] {
   if (/\b(full note|actions afterwards|attend(?:s|ing)? the meeting)\b/i.test(text)) {
     notes.push('Minutes described as a full note or actions afterwards.');
   }
-  if (/\b(onboarding|supplier|invoic)\w*\b/i.test(text) && /\b(regular|each week|weekly|seasonal|every month)\b/i.test(text)) {
+  if (/\b(onboarding|supplier)\w*\b/i.test(text) && /\b(regular|each week|weekly|seasonal|every month)\b/i.test(text)) {
     notes.push('Operational coordination described as regular or seasonal.');
+  }
+  const meetings = text.match(/\b(\d{1,3})\s+meetings?\b/i);
+  if (meetings) {
+    const frame = text.match(/\b(?:a|per|each)\s+(day|week|month)\b/i);
+    if (frame) notes.push(`About ${meetings[1]} meetings a ${frame[1].toLowerCase()}.`);
+    else if (pending === 'diary-depth') notes.push(`About ${meetings[1]} meetings in a typical week.`);
+    else notes.push(`About ${meetings[1]} meetings. The timeframe was not stated.`);
+  }
+  const invoices = text.match(/\b(\d{1,4})\s+invoices?\b/i);
+  if (invoices) notes.push(`Invoice volume mentioned: about ${invoices[1]} invoices.`);
+  const documents = text.match(/\b(\d{1,3})\s+(simple|standard|complex|substantial)\s+documents?\b/i);
+  if (documents) {
+    const frame = /\b(?:a|per|each)\s+week\b/i.test(text) ? ' a week' : '';
+    notes.push(`Document preparation: about ${documents[1]} ${documents[2].toLowerCase()} documents${frame}.`);
   }
   return notes;
 }
