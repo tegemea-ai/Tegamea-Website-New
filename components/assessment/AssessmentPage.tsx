@@ -135,8 +135,8 @@ const AssessmentPage: React.FC = () => {
         </div>
         <p className="text-sm md:text-base text-brand-charcoal/70 font-light leading-relaxed mb-6 max-w-2xl">
           A guided conversation about the support your business needs. Answer in your own words, with as much or as
-          little as you know. This stage records what you say. It does not recommend a role, estimate a workload figure
-          you did not give, or calculate a cost.
+          little as you know. The result names a leading role from what you describe. A weekly workload range appears
+          only where an approved benchmark applies, and there is no price.
         </p>
 
         <div className="border-2 border-brand-navy/20 bg-white p-4 sm:p-6">

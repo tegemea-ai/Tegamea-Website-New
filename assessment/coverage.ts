@@ -34,9 +34,6 @@ export function essentialGaps(record: AssessmentRecord, asked: string[]): Essent
   if (!hasResponsibilities(record) && !seen.has('support')) gaps.push('support');
   if (!hasBusinessNarrative(record) && !seen.has('business')) gaps.push('business');
   if (hasResponsibilities(record) && !time && !record.workload.uncertainty.value && !seen.has('workload')) gaps.push('workload');
-  if (hasResponsibilities(record) && !record.staffing.model.value && !seen.has('staffing') && (time || seen.has('workload'))) {
-    gaps.push('staffing');
-  }
   return gaps;
 }
 

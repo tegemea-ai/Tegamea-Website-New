@@ -1,3 +1,4 @@
+import { pictureFrom } from '../role/recommend';
 import type { AssessmentRecord, WorkComponent, WorkloadAssessment } from '../types';
 import { DOCUMENT_MINUTES, INBOX_BAND, type DocumentClass } from './benchmarks';
 
@@ -41,9 +42,21 @@ function inboxComponent(evidence: string, record: AssessmentRecord): WorkCompone
   }
   const messages = Number(count[1]);
   if (messages < INBOX_BAND.minMessages || messages > INBOX_BAND.maxMessages) {
-    return component('inbox', 'Inbox management', 'unquantified', null, null, null, `${messages} messages a day is outside the approved 80–150 band, so no inbox figure is applied.`);
+    return component('inbox', 'Inbox management', 'unquantified', null, null, null, `${messages} messages a day is outside the approved 80–150 band, so no inbox figure is applied. The number alone does not describe the work.`);
   }
-  const heavier = /more than triage/i.test(evidence);
+  const heavier = /more than triage|needs? a reply|same-day reply/i.test(evidence);
+  const triage = /triage|about 40%|40% actionable/i.test(evidence);
+  if (!heavier && !triage) {
+    return component(
+      'inbox',
+      'Inbox management',
+      'unquantified',
+      null,
+      null,
+      null,
+      'The volume is inside 80–150 messages a day. The 60–90 minute anchor also needs about 40% actionable, which has not been described, so no inbox time is applied.',
+    );
+  }
   const days = record.workload.activeTime.value?.unit === 'day' ? record.workload.activeTime.value.daysPerWeek : null;
   if (heavier) {
     return component(
@@ -72,6 +85,17 @@ function schedulingComponent(evidence: string, record: AssessmentRecord): WorkCo
     return component('scheduling', 'Diary and meeting scheduling', 'unquantified', null, null, null, 'Diary management and client meetings are one area. No meeting count was given, so no scheduling figure is applied.');
   }
   const meetings = Number(countMatch[1]);
+  if (pictureFrom(record).meetingNature === 'attend') {
+    return component(
+      'attendance',
+      'Meeting attendance',
+      'unquantified',
+      null,
+      null,
+      null,
+      `${meetings} meetings are attended. No approved attendance rate applies, and the scheduling anchors are not used.`,
+    );
+  }
   const external = /external/i.test(evidence);
   const internal = /internal/i.test(evidence);
   const simple = /straightforward|one-to-one|simple external/i.test(evidence);

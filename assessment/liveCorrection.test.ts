@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyModelTurn, blankModelTurn } from './applyTurn';
+import { recommendRole } from './role/recommend';
 import { createEmptyRecord, type AssessmentRecord } from './types';
 
 function reply(record: AssessmentRecord, asked: string[], text: string, assistantMessage: string) {
@@ -43,5 +44,7 @@ describe('live bookkeeping conversation', () => {
     expect(state.record.workload.assessment?.complete).toBe(false);
     expect(state.record.workload.assessed.value).toBeNull();
     expect(state.record.workload.agreed.value).toBeNull();
+    expect(recommendRole(state.record)?.role).not.toBe('Blended arrangement');
+    expect(state.assistantMessage).not.toMatch(/£/);
   });
 });

@@ -1,4 +1,5 @@
 import { essentialGaps, type EssentialGap } from './coverage';
+import { recommendRole } from './role/recommend';
 import { assessWorkload } from './workload/assess';
 import {
   affirmsProjects,
@@ -275,11 +276,11 @@ export function applyModelTurn(record: AssessmentRecord, visitorText: string, mo
   applyRequestedRole(next, text);
   applyWorkingTime(next, text, model, gapBefore);
   applyWorkloadEvidence(next, text, asked[asked.length - 1]);
+  applyDistinctions(next, text, asked[asked.length - 1]);
   applyEngagement(next, text, asked);
   applyAvailability(next, text, model, gapBefore);
   applyStaffing(next, text, model);
   applyProcess(next, text, model);
-  noteRoleFit(next);
   next.workload.assessment = assessWorkload(next);
   if (next.workload.assessment?.complete && next.workload.assessment.summary) {
     next.workload.assessed = explicitFact(next.workload.assessment.summary, text, Boolean(next.workload.assessed.value));
@@ -344,6 +345,7 @@ export function classifyFailure(error: unknown): { status: number; error: 'rate_
 
 export function summariseRecord(record: AssessmentRecord): string {
   const time = record.workload.activeTime.value;
+  const recommendation = recommendRole(record);
   const lines = [
     factLine('Sector', record.business.sector),
     factLine('Size', record.business.size),
@@ -356,7 +358,8 @@ export function summariseRecord(record: AssessmentRecord): string {
         ? `Project: ${record.project.notes.value.join(', ')}`
         : '',
     record.operations.notes.value?.length ? `Operations: ${record.operations.notes.value.join(', ')}` : '',
-    record.executive.requestedRole?.value ? `Role asked for (not confirmed as the right fit): ${record.executive.requestedRole.value}` : '',
+    record.executive.requestedRole?.value ? `Role asked for: ${record.executive.requestedRole.value}` : '',
+    recommendation ? `Leading recommendation: ${recommendation.headline}. ${recommendation.assessmentComplete ? 'The weekly range is included.' : 'The weekly workload range is still incomplete.'}` : '',
     time
       ? `Visitor hour estimate (not a validated workload): ${time.stated}; unit ${time.unit}; days per week ${time.daysPerWeek ?? 'unknown'}${time.needsClarification ? '; weekly hours not calculated' : time.weeklyHours != null && time.unit === 'day' ? `; weekly figure from their estimate ${time.weeklyHours}` : ''}`
       : record.workload.uncertainty.value
@@ -420,7 +423,7 @@ function applyLabels(record: AssessmentRecord, text: string, model: ModelTurn): 
       record.project.status = 'confirmed';
       record.project.notes = mergeList(record.project.notes, project, model.project.correction, text);
     }
-    const count = text.match(/\b(\d{1,3})\s+(?:active\s+)?projects?\b/i);
+    const count = text.match(/\b(\d{1,3})\s+(?:(?:active|client|live)\s+)?projects?\b/i);
     if (count && !declinesProjects(text)) {
       record.project.activeProjects = explicitFact(`${count[1]} projects`, text, Boolean(record.project.activeProjects.value));
     }
@@ -589,9 +592,10 @@ const EXECUTIVE: Signal[] = [
   { label: 'Inbox management', pattern: /\binbox\b|\bemails?\b/i },
   { label: 'Meeting minutes', pattern: /\b(meeting minutes|minute[- ]taking|take minutes|taking minutes|write the minutes)\b/i },
   { label: 'Travel coordination', pattern: /\btravel\b/i },
-  { label: 'Scheduling', pattern: /\bschedul\w*\b|\brearrang\w*\s+meetings?\b/i },
+  { label: 'Scheduling', pattern: /\bschedul\w*\b|\b(?:arrang\w+|rearrang\w+)\b(?:\s+\w+){0,5}\s+meetings?\b/i },
   { label: 'Client meeting coordination', pattern: /\bclient meetings?\b|\bmeeting coordination\b/i },
-  { label: 'Document preparation', pattern: /\bdocuments?\b|\bdocument preparation\b/i },
+  { label: 'Sending documents', pattern: /\b(?:send(?:ing)?|issu(?:e|ing))\b(?:\s+\w+){0,6}\s+documents?\b/i },
+  { label: 'Document preparation', pattern: /\bdocument preparation\b|\b(?:draft(?:ing)?|prepar(?:e|ing)|writ(?:e|ing))\b(?:\s+\w+){0,6}\s+documents?\b/i },
 ];
 
 const PROJECT: Signal[] = [
@@ -750,6 +754,21 @@ function requestedRoleFromText(text: string): string | null {
   return null;
 }
 
+function applyDistinctions(record: AssessmentRecord, text: string, pending?: string): void {
+  if (!Array.isArray(record.workload.evidence)) record.workload.evidence = [];
+  const aboutMeetings = pending === 'meeting-nature' || /\bmeetings?\b/i.test(text);
+  const notes: string[] = [];
+  if (aboutMeetings && /\battend/i.test(text)) notes.push('Meetings are attended.');
+  if (aboutMeetings && /\b(schedul|arrange)/i.test(text)) notes.push('Meetings are scheduled.');
+  const aboutProjects = pending === 'project-nature' || /\b(projects?|accounts?)\b/i.test(text);
+  if (aboutProjects && /\b(actively manage|project manag|plan and run|run the projects)\b/i.test(text)) notes.push('Projects require active management.');
+  if (aboutProjects && /\b(client accounts|track and chase|just track|only track)\b/i.test(text)) notes.push('Client work is routine tracking.');
+  for (const note of notes) {
+    if (record.workload.evidence.some((item) => item.text === note)) continue;
+    record.workload.evidence.push({ id: `e${record.workload.evidence.length + 1}`, text: note });
+  }
+}
+
 function applyEngagement(record: AssessmentRecord, text: string, asked: string[]): void {
   const pending = asked[asked.length - 1];
   if (pending === 'engagement-clarify') {
@@ -788,7 +807,10 @@ function applyWorkloadEvidence(record: AssessmentRecord, text: string, pending?:
 
 function evidenceFromText(text: string, pending?: string): string[] {
   const notes: string[] = [];
-  const emails = text.match(/\b(\d{1,4})\s+emails?\b/i);
+  const numbered = text.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/gi, (word) => {
+    return { one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9', ten: '10', eleven: '11', twelve: '12' }[word.toLowerCase()] ?? word;
+  });
+  const emails = numbered.match(/\b(\d{1,4})\s+emails?\b/i);
   if (emails) notes.push(`Inbox volume mentioned: about ${emails[1]} emails.`);
   else if (/\b(high[- ]volume inbox|inbox is (?:huge|busy|enormous)|lots of emails)\b/i.test(text)) {
     notes.push('Inbox described as high volume. No exact count was given.');
@@ -811,14 +833,16 @@ function evidenceFromText(text: string, pending?: string): string[] {
   if (/\b(onboarding|supplier)\w*\b/i.test(text) && /\b(regular|each week|weekly|seasonal|every month)\b/i.test(text)) {
     notes.push('Operational coordination described as regular or seasonal.');
   }
-  const meetings = text.match(/\b(\d{1,3})\s+meetings?\b/i);
+  const meetings = numbered.match(/\b(\d{1,3})\s+meetings?\b/i);
   if (meetings) {
     const frame = text.match(/\b(?:a|per|each)\s+(day|week|month)\b/i);
     if (frame) notes.push(`About ${meetings[1]} meetings a ${frame[1].toLowerCase()}.`);
+    else if (/\bweekly\b/i.test(text)) notes.push(`About ${meetings[1]} meetings a week.`);
+    else if (/\bdaily\b/i.test(text)) notes.push(`About ${meetings[1]} meetings a day.`);
     else if (pending === 'diary-depth') notes.push(`About ${meetings[1]} meetings in a typical week.`);
     else notes.push(`About ${meetings[1]} meetings. The timeframe was not stated.`);
   }
-  const invoices = text.match(/\b(\d{1,4})\s+invoices?\b/i);
+  const invoices = numbered.match(/\b(\d{1,4})\s+invoices?\b/i);
   if (invoices) notes.push(`Invoice volume mentioned: about ${invoices[1]} invoices.`);
   const documents = text.match(/\b(\d{1,3})\s+(simple|standard|complex|substantial)\s+documents?\b/i);
   if (documents) {
@@ -826,22 +850,6 @@ function evidenceFromText(text: string, pending?: string): string[] {
     notes.push(`Document preparation: about ${documents[1]} ${documents[2].toLowerCase()} documents${frame}.`);
   }
   return notes;
-}
-
-function noteRoleFit(record: AssessmentRecord): void {
-  if (record.executive.requestedRole?.value !== 'Executive Assistant') return;
-  const duties = record.executive.responsibilities.value ?? [];
-  const classic = duties.some((duty) => /inbox|diary|calendar|scheduling|meeting/i.test(duty));
-  const chasing = (record.project.notes.value ?? []).some((note) => /chasing/i.test(note));
-  const coordination = chasing || record.operations.mentioned;
-  if (!coordination) return;
-  addAssumption(
-    record,
-    classic
-      ? 'They asked for an EA. The mix of executive support and coordination may suit a blended role. This is not a recommendation.'
-      : 'They asked for an EA. The work described is closer to coordination than a classic EA brief. This is not a recommendation.',
-    'support',
-  );
 }
 
 function clean(value: string | null, max: number): string | null {

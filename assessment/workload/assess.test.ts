@@ -36,6 +36,16 @@ describe('workload reading', () => {
     expect(reading?.components.find((item) => item.id === 'inbox')).toMatchObject({ status: 'benchmark', lowMinutes: 300, highMinutes: 450, period: 'week' });
   });
 
+  it('does not apply the inbox anchor when the handling was not described', () => {
+    const record = createEmptyRecord();
+    record.executive.responsibilities = explicitFact(['Inbox management'], 'inbox');
+    record.workload.evidence = [{ id: 'e1', text: 'Inbox volume mentioned: about 100 emails.' }];
+    const reading = assessWorkload(record);
+    expect(reading?.components.find((item) => item.id === 'inbox')?.status).toBe('unquantified');
+    expect(reading?.subtotalLowMinutes).toBeNull();
+    expect(reading?.summary).not.toMatch(/\blight\b/i);
+  });
+
   it('uses a stated document class and count, and does not price unnamed documents', () => {
     const record = createEmptyRecord();
     record.executive.responsibilities = explicitFact(['Document preparation'], 'documents');

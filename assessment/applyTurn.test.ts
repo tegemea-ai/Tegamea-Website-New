@@ -101,7 +101,7 @@ describe('assessment turn rules', () => {
     closing.suggestComplete = true;
     const closed = applyModelTurn(record, 'I think that covers it.', closing, asked);
     expect(closed.complete).toBe(true);
-    expect(closed.assistantMessage).toMatch(/later phase/i);
+    expect(closed.assistantMessage).toMatch(/leading recommendation/i);
     expect(closed.assistantMessage).not.toMatch(/£/);
     expect(closed.record.workload.activeTime.value?.weeklyHours).toBe(10);
   });

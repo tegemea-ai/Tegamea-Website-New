@@ -1,9 +1,10 @@
 import { hasResponsibilities, type EssentialGap } from './coverage';
 import { say } from './messageFormat';
+import { pictureFrom, recommendRole } from './role/recommend';
 import type { AssessmentRecord } from './types';
 
 const SAFE_CLOSE =
-  "That's enough for this stage. A later phase will turn this into a recommendation. I haven't suggested how to staff it or calculated a cost.";
+  "That's enough to set out a leading recommendation. A complete assessment still needs an indicative weekly workload range, and that range is outstanding where an approved benchmark does not yet apply. I haven't calculated a cost.";
 
 const BLOCKED_REPLY = /£|\$\s?\d|\bper hour\b|\bi recommend\b|\brecruitment fee\b|\bon-?costs?\b|\bsalary\b/i;
 
@@ -65,8 +66,12 @@ export function doNotAsk(record: AssessmentRecord): string[] {
   const lines: string[] = [];
   const role = record.executive.requestedRole?.value;
   if (role) {
+    lines.push(`They asked for a ${role}. That is the role they named. The leading recommendation follows the responsibilities.`);
+  }
+  const recommendation = recommendRole(record);
+  if (recommendation) {
     lines.push(
-      `They asked for a ${role}. That is the role they named, not confirmation it is the right fit. Do not assume it, and do not recommend a different role.`,
+      `Leading role from the evidence: ${recommendation.headline}. ${recommendation.explanation} Do not call this a blended role unless the record shows substantive project management.`,
     );
   }
   if (!hasResponsibilities(record)) {
@@ -134,7 +139,7 @@ export function composeAssistantReply(input: {
   }
 
   if (input.complete) {
-    if (!/later phase/i.test(text)) text = `${text} ${SAFE_CLOSE}`.trim();
+    if (!/leading recommendation/i.test(text)) text = `${text} ${SAFE_CLOSE}`.trim();
     return { text, asked };
   }
 
@@ -170,6 +175,9 @@ function buildsOnUnsupported(message: string, record: AssessmentRecord): boolean
   const generalOps = notes.some((note) => !/invoic|bookkeep/i.test(note));
   if (/\boperational coordination\b/i.test(message) && !generalOps) return true;
   if (record.staffing.engagement?.source === 'provisional' && /\b(throughout the year|weekly pattern|varies throughout)\b/i.test(message)) return true;
+  if (/\blight\b/i.test(message) && /\b(email|inbox)\b/i.test(message)) return true;
+  const picture = pictureFrom(record);
+  if (/\bblended role\b/i.test(message) && picture.projectDepth !== 'management') return true;
   return false;
 }
 
@@ -180,7 +188,10 @@ function rememberKeptQuestion(message: string, asked: string[]): void {
   };
   if (/\binvoic|bookkeep/i.test(message)) mark('books-depth');
   if (/\b(how many meetings|typical week)\b/i.test(message) && /\b(diary|meeting|scheduling)\b/i.test(message)) mark('diary-depth');
-  if (/\b(internal|external)\b/i.test(message) && /\bmeetings?\b/i.test(message)) mark('diary-type');
+  if (/\b(attend|schedule)\b/i.test(message) && /\bmeetings?\b/i.test(message)) mark('meeting-nature');
+  if (/\b(triage|draft|repl\w*|follow)\b/i.test(message) && /\bemails?\b/i.test(message)) mark('inbox-handling');
+  if (/\b(client accounts|actively manage)\b/i.test(message)) mark('project-nature');
+  if (/\b(straightforward|involved coordination)\b/i.test(message) && /\bmeetings?\b/i.test(message)) mark('schedule-shape');
   if (/\bpart[- ]time\b/i.test(message) && /\bassistant\b/i.test(message)) mark('engagement-clarify');
 }
 
@@ -223,34 +234,39 @@ function repeatsKnownHours(message: string, record: AssessmentRecord): boolean {
   return /\b(how much active|how many hours|active working time|per day or per week|is that per day|how long does(?: this| that)? take)\b/i.test(message);
 }
 
-/** Named duties still need one material follow-up. This is the topic state, not a script of every category. */
+/** A follow-up is open only when the answer could still change the role, the workload reading, coverage or confidence. */
 export function openWorkDrivers(record: AssessmentRecord, asked: string[]): string[] {
   const duties = record.executive.responsibilities.value ?? [];
   const evidence = (record.workload.evidence ?? []).map((note) => note.text).join(' ');
+  const picture = pictureFrom(record);
   const pending: string[] = [];
-  if (duties.includes('Inbox management') && !asked.includes('inbox-depth') && !/\d+\s+emails|triage|more than triage|repl/i.test(evidence)) {
-    pending.push('inbox-depth');
-  }
-  const diaryNamed = duties.some((duty) => /diary|calendar|scheduling|client meeting/i.test(duty));
+  const projectsNamed =
+    (record.project.status ?? 'unknown') !== 'not_applicable' &&
+    (record.project.notes.value ?? []).some((note) => note !== 'None');
+  const emailKnown = /about \d+ emails/i.test(evidence);
+  const inboxNamed = duties.includes('Inbox management') || emailKnown;
+  if (inboxNamed && !emailKnown && !picture.emailHandlingDescribed && !asked.includes('inbox-depth')) pending.push('inbox-depth');
+
   const meetingKnown = /about \d+ meetings/i.test(evidence);
-  const meetingTyped = /\b(external|internal)\b/i.test(evidence);
-  if (diaryNamed && !meetingKnown && !asked.includes('diary-depth')) pending.push('diary-depth');
-  const ops = record.operations.notes.value ?? [];
-  const books = ops.some((note) => /invoic|bookkeep/i.test(note));
-  const generalOps = ops.some((note) => !/invoic|bookkeep/i.test(note));
+  const meetingsNamed = meetingKnown || duties.some((duty) => /diary|calendar|scheduling|client meeting/i.test(duty));
+  if (meetingsNamed && !meetingKnown && !asked.includes('diary-depth')) pending.push('diary-depth');
+
+  const books = (record.operations.notes.value ?? []).some((note) => /invoic|bookkeep/i.test(note));
   const invoiceKnown = /invoice volume mentioned/i.test(evidence);
   if (books && !invoiceKnown && !asked.includes('books-depth')) pending.push('books-depth');
   else if (books && !invoiceKnown && record.staffing.engagement?.source === 'explicit' && !asked.includes('books-return')) pending.push('books-return');
-  if (diaryNamed && meetingKnown && !meetingTyped && !asked.includes('diary-type')) pending.push('diary-type');
+
+  if (meetingKnown && picture.meetingNature === 'unknown' && !asked.includes('meeting-nature')) pending.push('meeting-nature');
+  if (emailKnown && !picture.emailHandlingDescribed && !asked.includes('inbox-handling')) pending.push('inbox-handling');
+  if (projectsNamed && picture.projectDepth === 'unknown' && !asked.includes('project-nature')) pending.push('project-nature');
+
+  const schedulingKnown = picture.meetingNature === 'schedule' || picture.meetingNature === 'both';
+  const anchorKnown = /straightforward|one-to-one|simple external|several people|no calendar|complex/i.test(evidence);
+  if (schedulingKnown && meetingKnown && !anchorKnown && !asked.includes('schedule-shape')) pending.push('schedule-shape');
+
   if (duties.includes('Meeting minutes') && !asked.includes('minutes-depth') && !/full note|actions afterwards|in the meeting/i.test(evidence)) {
     pending.push('minutes-depth');
   }
-  const chasingNamed = (record.project.notes.value ?? []).some((note) => /chasing/i.test(note));
-  const projectsNamed = (record.project.status ?? 'unknown') !== 'not_applicable' && (record.project.notes.value ?? []).some((note) => note !== 'None' && !/chasing/i.test(note));
-  if ((chasingNamed || projectsNamed) && !asked.includes('project-depth') && !/in more detail|regular part|mostly colleagues/i.test(evidence)) {
-    pending.push('project-depth');
-  }
-  if (generalOps && !asked.includes('ops-depth') && !/regular|each week|weekly|seasonal/i.test(evidence)) pending.push('ops-depth');
   if (record.staffing.engagement?.source === 'provisional' && !asked.includes('engagement-clarify')) pending.unshift('engagement-clarify');
   if (record.workload.peak.value && !asked.includes('peak') && !/extra support|during those/i.test(evidence)) pending.push('peak');
   return pending;
@@ -260,14 +276,15 @@ function addressesOpenDriver(message: string, record: AssessmentRecord, asked: s
   if (/\b(how many hours|how many days|availability|what time|exact time)\b/i.test(message)) return false;
   const pending = openWorkDrivers(record, asked);
   if (pending.includes('inbox-depth') && /\b(emails?|inbox|triage|reply|replies)\b/i.test(message)) return true;
+  if (pending.includes('inbox-handling') && /\b(emails?|inbox|triage|draft|repl\w*|follow)\b/i.test(message)) return true;
   if (pending.includes('books-depth') && /\b(invoic\w*|book\s*keep\w*)\b/i.test(message)) return true;
   if (pending.includes('books-return') && /\b(invoic\w*|book\s*keep\w*)\b/i.test(message)) return true;
   if (pending.includes('engagement-clarify') && /\bpart[- ]time\b/i.test(message)) return true;
   if (pending.includes('diary-depth') && /\b(meetings?|diary management|scheduling)\b/i.test(message)) return true;
-  if (pending.includes('diary-type') && /\b(internal|external|meetings?)\b/i.test(message)) return true;
+  if (pending.includes('meeting-nature') && /\b(attend|schedule)\b/i.test(message)) return true;
+  if (pending.includes('schedule-shape') && /\b(straightforward|complex|internal|external|meetings?)\b/i.test(message)) return true;
   if (pending.includes('minutes-depth') && /\bminutes\b/i.test(message)) return true;
-  if (pending.includes('project-depth') && /\b(chas\w*|stakeholders|projects?)\b/i.test(message)) return true;
-  if (pending.includes('ops-depth') && /\b(onboarding|process|recurring|operational)\b/i.test(message)) return true;
+  if (pending.includes('project-nature') && /\b(accounts?|manage|projects?|chas\w*)\b/i.test(message)) return true;
   if (pending.includes('peak') && /\b(peak|busier|season)\b/i.test(message)) return true;
   return false;
 }
@@ -326,20 +343,42 @@ function takeFollowUp(record: AssessmentRecord, asked: string[]): string | null 
   if (next === 'inbox-depth') {
     return say({
       before: 'You mentioned inbox management.',
-      question: 'Roughly how many emails come in, how much needs a reply rather than triage, and how quickly those replies are expected?',
-      after: 'A rough sense is enough.',
+      question: 'Roughly how many emails come in, and what would the assistant need to do with them?',
+      after: 'For example triage, drafting, answering independently, or following things up. A rough sense is enough.',
+    });
+  }
+  if (next === 'inbox-handling') {
+    const count = (record.workload.evidence ?? []).map((note) => note.text).join(' ').match(/about (\d+) emails/i);
+    return say({
+      before: count ? `You mentioned about ${count[1]} emails.` : 'You mentioned the inbox.',
+      question: 'What would the assistant need to do with them: triage, draft replies, answer independently, follow things up, or some combination?',
+      after: 'The number alone does not determine the workload. No time allowance is applied unless an approved benchmark matches.',
     });
   }
   if (next === 'diary-depth') {
+    const diary = (record.executive.responsibilities.value ?? []).some((duty) => /diary|calendar|scheduling/i.test(duty));
     return say({
-      before: 'You mentioned diary management.',
-      question: 'Roughly how many meetings are in a typical week, and are they mostly internal or with people outside the firm?',
+      before: diary ? 'You mentioned diary management.' : 'You mentioned the meetings.',
+      question: 'Roughly how many meetings are in a typical week?',
     });
   }
-  if (next === 'diary-type') {
+  if (next === 'meeting-nature') {
     return say({
       before: 'You have already given a meeting count.',
-      question: 'Are those mostly internal, or with people outside the firm?',
+      question: 'Would the assistant attend those meetings, schedule them, or both?',
+    });
+  }
+  if (next === 'schedule-shape') {
+    return say({
+      before: 'Those meetings are to be scheduled.',
+      question: 'Are they straightforward to arrange, or do they need more involved coordination?',
+    });
+  }
+  if (next === 'project-nature') {
+    const count = record.project.activeProjects.value;
+    return say({
+      before: count && count !== 'None' ? `You mentioned ${count}.` : 'You mentioned the client work.',
+      question: 'Are these client accounts to track and chase, or projects the assistant would actively manage?',
     });
   }
   if (next === 'books-depth' || next === 'books-return') {

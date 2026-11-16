@@ -223,7 +223,7 @@ describe('proportionate questioning', () => {
     expect(state.assistantMessage).not.toMatch(/what time/i);
     state = reply(state.record, state.asked, "That's all.", 'I have a clear picture.', true);
     expect(state.complete).toBe(true);
-    expect(state.assistantMessage).toMatch(/later phase/i);
+    expect(state.assistantMessage).toMatch(/leading recommendation/i);
     expect(state.assistantMessage).not.toMatch(/£|salary|I recommend/i);
     expect(state.record.workload.activeTime.value?.weeklyHours).toBe(10);
   });

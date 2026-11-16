@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { applyModelTurn, blankModelTurn } from './applyTurn';
+import { recommendRole } from './role/recommend';
 import { createEmptyRecord, type AssessmentRecord } from './types';
 
 const OPENING = 'I am a director of a growing accountancy firm and I need an EA.';
@@ -92,9 +93,10 @@ describe('accountancy firm methodology', () => {
     );
     expect(state.record.project.notes.value).toEqual(expect.arrayContaining(['Chasing and follow-up']));
     expect(state.record.workload.evidence.some((note) => /chases staff/i.test(note.text))).toBe(true);
-    expect(state.record.assumptions.some((item) => /blended role/i.test(item.text))).toBe(true);
-    expect(state.record.assumptions.some((item) => /not a recommendation/i.test(item.text))).toBe(true);
-    expect(state.assistantMessage).not.toMatch(/\bi recommend\b/i);
+    expect(state.record.assumptions.some((item) => /blended role/i.test(item.text))).toBe(false);
+    expect(recommendRole(state.record)?.role).toBe('Executive Assistant');
+    expect(recommendRole(state.record)?.headline).toMatch(/client and project coordination/i);
+    expect(state.assistantMessage).not.toMatch(/\bi recommend\b|\bblended role\b/i);
 
     state = reply(
       state.record,
@@ -156,8 +158,8 @@ describe('stage A acceptance', () => {
     expect(state.assistantMessage).toMatch(/how many meetings/i);
     expect(state.assistantMessage).not.toMatch(/what time|how many hours/i);
     state = reply(state.record, state.asked, 'Maybe six meetings a week, mostly with clients outside the firm.', 'How many hours should the chasing take?');
-    expect(state.assistantMessage).toMatch(/project coordination|chasing/i);
-    expect(state.assistantMessage).not.toMatch(/how many hours/i);
+    expect(state.assistantMessage).toMatch(/attend those meetings|schedule them/i);
+    expect(state.assistantMessage).not.toMatch(/how many hours|chasing or tracking/i);
     expect(state.record.workload.assessed.value).toBeNull();
   });
 
