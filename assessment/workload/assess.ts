@@ -1,6 +1,7 @@
 import { pictureFrom } from '../role/recommend';
 import type { AssessmentRecord, WorkComponent, WorkloadAssessment } from '../types';
 import { DOCUMENT_MINUTES, INBOX_BAND, type DocumentClass } from './benchmarks';
+import { formatSpan as formatQuantity, isRange, storedSpan } from './counts';
 
 /**
  * Builds a workload reading from stored evidence and approved rules.
@@ -35,14 +36,21 @@ export function assessWorkload(record: AssessmentRecord): WorkloadAssessment | n
 
 function inboxComponent(evidence: string, record: AssessmentRecord): WorkComponent | null {
   const named = (record.executive.responsibilities.value ?? []).includes('Inbox management');
-  const count = evidence.match(/about (\d+) emails/i);
-  if (!named && !count) return null;
-  if (!count) {
+  const span = storedSpan(evidence, 'emails');
+  if (!named && !span) return null;
+  if (!span) {
     return component('inbox', 'Inbox management', 'unquantified', null, null, null, 'Inbox work was named. No message count was given, so the 60–90 minute anchor is not applied.');
   }
-  const messages = Number(count[1]);
-  if (messages < INBOX_BAND.minMessages || messages > INBOX_BAND.maxMessages) {
-    return component('inbox', 'Inbox management', 'unquantified', null, null, null, `${messages} messages a day is outside the approved 80–150 band, so no inbox figure is applied. The number alone does not describe the work.`);
+  const whollyInside = span.low >= INBOX_BAND.minMessages && span.high <= INBOX_BAND.maxMessages;
+  const whollyOutside = span.high < INBOX_BAND.minMessages || span.low > INBOX_BAND.maxMessages;
+  if (!whollyInside) {
+    const kept = isRange(span)
+      ? `The stated range of ${formatQuantity(span)} messages a day is kept and is not treated as a single count.`
+      : `${span.low} messages a day is a single stated count.`;
+    const reason = isRange(span) && !whollyOutside
+      ? 'It is not wholly inside or outside the approved 80–150 band, so the anchor is not applied.'
+      : 'It is outside the approved 80–150 band, so no inbox figure is applied. The number alone does not describe the work.';
+    return component('inbox', 'Inbox management', 'unquantified', null, null, null, `${kept} ${reason}`);
   }
   const heavier = /more than triage|needs? a reply|same-day reply/i.test(evidence);
   const triage = /triage|about 40%|40% actionable/i.test(evidence);
@@ -79,12 +87,12 @@ function inboxComponent(evidence: string, record: AssessmentRecord): WorkCompone
 function schedulingComponent(evidence: string, record: AssessmentRecord): WorkComponent | null {
   const duties = record.executive.responsibilities.value ?? [];
   const named = duties.some((duty) => /diary|calendar|scheduling|client meeting/i.test(duty));
-  const countMatch = evidence.match(/about (\d+) meetings/i);
-  if (!named && !countMatch) return null;
-  if (!countMatch) {
+  const span = storedSpan(evidence, 'meetings');
+  if (!named && !span) return null;
+  if (!span) {
     return component('scheduling', 'Diary and meeting scheduling', 'unquantified', null, null, null, 'Diary management and client meetings are one area. No meeting count was given, so no scheduling figure is applied.');
   }
-  const meetings = Number(countMatch[1]);
+  const meetings = formatQuantity(span);
   if (pictureFrom(record).meetingNature === 'attend') {
     return component(
       'attendance',
@@ -93,31 +101,41 @@ function schedulingComponent(evidence: string, record: AssessmentRecord): WorkCo
       null,
       null,
       null,
-      `${meetings} meetings are attended. No approved attendance rate applies, and the scheduling anchors are not used.`,
+      `${meetings} meetings are attended. ${isRange(span) ? 'The range is kept.' : 'This is a single stated count.'} No approved attendance rate applies, and the scheduling anchors are not used.`,
     );
   }
   const external = /external/i.test(evidence);
   const internal = /internal/i.test(evidence);
   const simple = /straightforward|one-to-one|simple external/i.test(evidence);
-  const complex = /several people|no calendar|complex/i.test(evidence);
+  const complex = /several people|no calendar|complex|more involved/i.test(evidence);
   if (external && simple && !complex) {
     return component(
       'scheduling',
       'Diary and meeting scheduling',
       'benchmark',
-      meetings * 5,
-      meetings * 10,
+      span.low * 5,
+      span.high * 10,
       'week',
-      `${meetings} straightforward external meetings, at the approved 5–10 minutes each. Diary management and client meetings are counted once.`,
+      isRange(span)
+        ? `${meetings} straightforward external meetings. The range is kept: ${span.low} at 5 minutes through ${span.high} at 10 minutes. Diary management and client meetings are counted once.`
+        : `${meetings} straightforward external meetings, at the approved 5–10 minutes each. This is a single stated count. Diary management and client meetings are counted once.`,
     );
   }
-  if (internal && !external && meetings === 12 && !complex) {
-    return component('scheduling', 'Diary and meeting scheduling', 'benchmark', 15, 20, 'week', 'About 12 internal bookings in a simple batch: 15–20 minutes in total.');
+  if (internal && !external && span.low === 12 && span.high === 12 && !complex) {
+    return component('scheduling', 'Diary and meeting scheduling', 'benchmark', 15, 20, 'week', 'About 12 internal bookings in a simple batch: 15–20 minutes in total. This is a single stated count.');
   }
   if (!external && !internal) {
-    return component('scheduling', 'Diary and meeting scheduling', 'unquantified', null, null, null, `About ${meetings} meetings were mentioned. Internal and external coordination use different approved figures, so neither is applied yet.`);
+    return component('scheduling', 'Diary and meeting scheduling', 'unquantified', null, null, null, `About ${meetings} meetings were mentioned. ${isRange(span) ? 'The range is kept and is not a single count.' : 'This is a single stated count.'} Internal and external coordination use different approved figures, so neither is applied yet.`);
   }
-  return component('scheduling', 'Diary and meeting scheduling', 'unquantified', null, null, null, 'The scheduling description does not match one approved scenario, so no figure is applied.');
+  return component(
+    'scheduling',
+    'Diary and meeting scheduling',
+    'unquantified',
+    null,
+    null,
+    null,
+    `About ${meetings} meetings were described. ${isRange(span) ? 'The range is kept and is not a single count.' : 'This is a single stated count.'} The description does not match one approved scenario, so no figure is applied.`,
+  );
 }
 
 function minutesComponent(evidence: string): WorkComponent | null {

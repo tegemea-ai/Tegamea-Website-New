@@ -31,7 +31,7 @@ describe('architecture firm role reading', () => {
       expect.arrayContaining(['Inbox management', 'Sending documents to clients', 'Routine client follow-up and action tracking']),
     );
     expect(state.record.assumptions.some((item) => /blended role/i.test(item.text))).toBe(false);
-    expect(state.assistantMessage).toMatch(/attend those meetings, schedule them, or both/i);
+    expect(state.assistantMessage).toMatch(/arrange them, attend them, or both/i);
     expect(state.assistantMessage).toMatch(/\*\*/);
     expect(state.assistantMessage).not.toMatch(/light|blended role|chasing or tracking|operational coordination|£/i);
     expect(state.record.executive.responsibilities.value).not.toContain('Document preparation');

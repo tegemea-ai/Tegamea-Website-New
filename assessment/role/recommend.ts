@@ -40,14 +40,18 @@ export function pictureFrom(record: AssessmentRecord): WorkPicture {
   const text = (record.statements ?? []).map((statement) => statement.text).join('\n');
   const evidence = (record.workload.evidence ?? []).map((note) => note.text).join('\n');
   const duties = record.executive.responsibilities.value ?? [];
+  const refusesAllAttendance = /the assistant does not attend the meetings/i.test(evidence);
   let attend = /meetings are attended/i.test(evidence);
   let schedule = /meetings are scheduled/i.test(evidence);
   for (const statement of record.statements ?? []) {
     const line = statement.text;
-    if (/\bmeetings?\b/i.test(line) && /\b(attend|attending)\b/i.test(line)) attend = true;
-    if (/\b(?:schedul\w+|arrang\w+)\b(?:\s+\w+){0,8}\s+meetings?\b/i.test(line)) schedule = true;
-    if (/\bmeetings?\b(?:\s+\w+){0,10}\b(?:schedul\w+|arranged|to arrange)\b/i.test(line)) schedule = true;
+    const refusesMinutesAttendance = /\b(?:do(?:es)?\s+not|doesn't|doesnt|do not|no need to)\b[\s\S]{0,50}\battend\b[\s\S]{0,50}\bminutes?\b/i.test(line);
+    const refusesAttendance = /\b(?:do(?:es)?\s+not|doesn't|doesnt|do not|no need to|without)\b(?:\s+\w+){0,6}\s+attend/i.test(line);
+    const refusesArranging = /\b(?:do(?:es)?\s+not|doesn't|doesnt|do not|not)\b(?:\s+\w+){0,5}\s+(?:schedul|arrang)/i.test(line);
+    if (/\bmeetings?\b/i.test(line) && /\battend/i.test(line) && !refusesAttendance && !refusesMinutesAttendance) attend = true;
+    if (/\bmeetings?\b/i.test(line) && /\b(schedul\w+|arrang\w+)\b/i.test(line) && !refusesArranging) schedule = true;
   }
+  if (refusesAllAttendance) attend = false;
   const management =
     /projects require active management/i.test(evidence) ||
     /\b(project manag\w+|actively manage|manage (?:the |those |these |their )?projects|run (?:the |those |these )?projects|plan and run)\b/i.test(text) ||
@@ -61,11 +65,13 @@ export function pictureFrom(record: AssessmentRecord): WorkPicture {
   else if (routineLanguage || chasing) projectDepth = 'routine';
 
   const emailHandlingDescribed =
-    /more than triage|includes triage/i.test(evidence) ||
-    (record.statements ?? []).some(
-      (statement) =>
-        /\b(emails?|inbox)\b/i.test(statement.text) &&
-        /\b(triage|draft(?:ing|s)?|repl(?:y|ies)|respond(?:s|ing)?|follow(?:\s|-)?up)\b/i.test(statement.text),
+    /more than triage|includes triage|filters emails|flags matters|responds to routine/i.test(evidence) ||
+    (record.statements ?? []).some((statement) =>
+      statement.text.split(/,| and /i).some(
+        (clause) =>
+          /\b(emails?|inbox)\b/i.test(clause) &&
+          /\b(triage|draft(?:ing|s)?|repl(?:y|ies)|respond(?:s|ing)?|filter(?:s|ing)?|flag(?:s|ging)?)\b/i.test(clause),
+      ),
     );
 
   return {

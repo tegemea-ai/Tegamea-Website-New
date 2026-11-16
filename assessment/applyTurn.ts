@@ -1,6 +1,7 @@
 import { essentialGaps, type EssentialGap } from './coverage';
 import { recommendRole } from './role/recommend';
 import { assessWorkload } from './workload/assess';
+import { formatSpan, meetingQuantity, quantityBefore, type QuantitySpan } from './workload/counts';
 import {
   affirmsProjects,
   canFinish,
@@ -406,7 +407,9 @@ function applyBusiness(record: AssessmentRecord, text: string, model: ModelTurn)
 }
 
 function applyLabels(record: AssessmentRecord, text: string, model: ModelTurn): void {
-  const executive = unique([...labelsInText(text, EXECUTIVE), ...modelLabels(model.executive.responsibilities, EXECUTIVE, text)]);
+  const executive = unique([...labelsInText(text, EXECUTIVE), ...modelLabels(model.executive.responsibilities, EXECUTIVE, text)]).filter(
+    (label) => label !== 'Meeting minutes' || minutesWereRequested(text),
+  );
   if (executive.length) {
     record.executive.mentioned = true;
     record.executive.responsibilities = mergeList(record.executive.responsibilities, executive, model.executive.correction, text);
@@ -754,12 +757,47 @@ function requestedRoleFromText(text: string): string | null {
   return null;
 }
 
+function minutesWereRequested(text: string): boolean {
+  const refusal = /\b(?:do(?:es)?\s+not|doesn't|doesnt|do not|no need to)\b[\s\S]{0,50}\battend\b[\s\S]{0,50}\bminutes?\b/i.test(text);
+  if (!refusal) return true;
+  return /\b(prepare minutes|write the minutes|minute[- ]taking|need the minutes|minutes are required)\b/i.test(text);
+}
+
+function meetingNote(span: QuantitySpan, text: string, pending?: string): string {
+  const amount = formatSpan(span);
+  const frame = text.match(/\b(?:a|per|each)\s+(day|week|month)\b/i);
+  if (frame) return `About ${amount} meetings a ${frame[1].toLowerCase()}.`;
+  if (/\bweekly\b/i.test(text)) return `About ${amount} meetings a week.`;
+  if (/\bdaily\b/i.test(text)) return `About ${amount} meetings a day.`;
+  if (pending === 'diary-depth') return `About ${amount} meetings in a typical week.`;
+  return `About ${amount} meetings. The timeframe was not stated.`;
+}
+
 function applyDistinctions(record: AssessmentRecord, text: string, pending?: string): void {
   if (!Array.isArray(record.workload.evidence)) record.workload.evidence = [];
-  const aboutMeetings = pending === 'meeting-nature' || /\bmeetings?\b/i.test(text);
+  const aboutMeetings = pending === 'meeting-nature' || pending === 'meeting-clarify' || /\bmeetings?\b/i.test(text);
   const notes: string[] = [];
-  if (aboutMeetings && /\battend/i.test(text)) notes.push('Meetings are attended.');
-  if (aboutMeetings && /\b(schedul|arrange)/i.test(text)) notes.push('Meetings are scheduled.');
+  const bareAnswer = /^(yes|no|yeah|nope|yep|nah)\b[.!]?$/i.test(text.trim());
+  if (aboutMeetings && bareAnswer && (pending === 'meeting-nature' || pending === 'meeting-clarify' || pending === 'minutes-clarify')) {
+    notes.push('The short reply did not identify which part of the question it answered.');
+  } else if (aboutMeetings) {
+    const refusesMinutesAttendance = /\b(?:do(?:es)?\s+not|doesn't|doesnt|do not|no need to)\b[\s\S]{0,50}\battend\b[\s\S]{0,50}\bminutes?\b/i.test(text);
+    const refusesAttendance = /\b(?:do(?:es)?\s+not|doesn't|doesnt|do not|no need to|without)\b(?:\s+\w+){0,6}\s+attend/i.test(text);
+    const refusesArranging = /\b(?:do(?:es)?\s+not|doesn't|doesnt|do not|not)\b(?:\s+\w+){0,5}\s+(?:schedul|arrang)/i.test(text);
+    if (refusesMinutesAttendance) notes.push('Attendance in order to take minutes is not required.');
+    else if (refusesAttendance) notes.push('The assistant does not attend the meetings.');
+    else if (/\battend/i.test(text)) {
+      if (/\b(remote(?:ly)?|on teams|on zoom|by video|video call)\b/i.test(text)) notes.push('Meetings are attended remotely.');
+      else if (/\b(in person|in the room|on-?site|physically)\b/i.test(text)) notes.push('Meetings are attended in person.');
+      else notes.push('Meetings are attended.');
+    }
+    if (/\b(schedul|arrang)/i.test(text) && !refusesArranging) notes.push('Meetings are scheduled.');
+    if (/\b(no minutes|minutes are not|do not need minutes|don't need minutes|without minutes)\b/i.test(text)) {
+      notes.push('Minute preparation is not required.');
+    } else if (/\b(full notes?|take minutes|minute[- ]taking|write the minutes|prepare minutes|action summaries)\b/i.test(text) && !refusesMinutesAttendance) {
+      notes.push('Minute preparation was mentioned.');
+    }
+  }
   const aboutProjects = pending === 'project-nature' || /\b(projects?|accounts?)\b/i.test(text);
   if (aboutProjects && /\b(actively manage|project manag|plan and run|run the projects)\b/i.test(text)) notes.push('Projects require active management.');
   if (aboutProjects && /\b(client accounts|track and chase|just track|only track)\b/i.test(text)) notes.push('Client work is routine tracking.');
@@ -807,11 +845,8 @@ function applyWorkloadEvidence(record: AssessmentRecord, text: string, pending?:
 
 function evidenceFromText(text: string, pending?: string): string[] {
   const notes: string[] = [];
-  const numbered = text.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/gi, (word) => {
-    return { one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9', ten: '10', eleven: '11', twelve: '12' }[word.toLowerCase()] ?? word;
-  });
-  const emails = numbered.match(/\b(\d{1,4})\s+emails?\b/i);
-  if (emails) notes.push(`Inbox volume mentioned: about ${emails[1]} emails.`);
+  const emails = quantityBefore(text, 'emails?');
+  if (emails) notes.push(`Inbox volume mentioned: about ${formatSpan(emails)} emails.`);
   else if (/\b(high[- ]volume inbox|inbox is (?:huge|busy|enormous)|lots of emails)\b/i.test(text)) {
     notes.push('Inbox described as high volume. No exact count was given.');
   }
@@ -821,6 +856,9 @@ function evidenceFromText(text: string, pending?: string): string[] {
   }
   if (/\bexternal\b/i.test(text) && /\b(meetings?|clients?)\b/i.test(text)) notes.push('Coordinates external client meetings.');
   else if (/\bclient meetings?\b/i.test(text)) notes.push('Coordinates client meetings.');
+  if (/\binternal\b/i.test(text) && /\bmeetings?\b/i.test(text)) notes.push('Meetings include internal meetings.');
+  if (/\b(straightforward|one-to-one)\b/i.test(text) && /\bmeetings?\b/i.test(text)) notes.push('Meetings described as straightforward.');
+  if (/\b(more involved|several people|no calendar)\b/i.test(text) && /\bmeetings?\b/i.test(text)) notes.push('Meetings described as more involved.');
   if (/\bchas(?:e|ing)\b/i.test(text) && /\b(staff|team|colleagues|deliverables)\b/i.test(text)) {
     notes.push('Chases staff for deliverables.');
   }
@@ -833,17 +871,10 @@ function evidenceFromText(text: string, pending?: string): string[] {
   if (/\b(onboarding|supplier)\w*\b/i.test(text) && /\b(regular|each week|weekly|seasonal|every month)\b/i.test(text)) {
     notes.push('Operational coordination described as regular or seasonal.');
   }
-  const meetings = numbered.match(/\b(\d{1,3})\s+meetings?\b/i);
-  if (meetings) {
-    const frame = text.match(/\b(?:a|per|each)\s+(day|week|month)\b/i);
-    if (frame) notes.push(`About ${meetings[1]} meetings a ${frame[1].toLowerCase()}.`);
-    else if (/\bweekly\b/i.test(text)) notes.push(`About ${meetings[1]} meetings a week.`);
-    else if (/\bdaily\b/i.test(text)) notes.push(`About ${meetings[1]} meetings a day.`);
-    else if (pending === 'diary-depth') notes.push(`About ${meetings[1]} meetings in a typical week.`);
-    else notes.push(`About ${meetings[1]} meetings. The timeframe was not stated.`);
-  }
-  const invoices = numbered.match(/\b(\d{1,4})\s+invoices?\b/i);
-  if (invoices) notes.push(`Invoice volume mentioned: about ${invoices[1]} invoices.`);
+  const meetings = meetingQuantity(text);
+  if (meetings) notes.push(meetingNote(meetings, text, pending));
+  const invoices = quantityBefore(text, 'invoices?');
+  if (invoices) notes.push(`Invoice volume mentioned: about ${formatSpan(invoices)} invoices.`);
   const documents = text.match(/\b(\d{1,3})\s+(simple|standard|complex|substantial)\s+documents?\b/i);
   if (documents) {
     const frame = /\b(?:a|per|each)\s+week\b/i.test(text) ? ' a week' : '';

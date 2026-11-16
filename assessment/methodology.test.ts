@@ -28,7 +28,7 @@ describe('accountancy firm methodology', () => {
     expect(applied.record.executive.requestedRole.value).toBe('Executive Assistant');
     expect(applied.record.executive.responsibilities.value).toBeNull();
     expect(applied.record.workload.activeTime.value).toBeNull();
-    expect(applied.assistantMessage).toMatch(/what would you like the EA to take off your plate/i);
+    expect(applied.assistantMessage).toMatch(/what would you most like your Executive Assistant to take off your plate/i);
     expect(applied.assistantMessage).not.toMatch(/how many hours/i);
   });
 
@@ -136,7 +136,7 @@ describe('accountancy firm methodology', () => {
 describe('stage A acceptance', () => {
   it('A. asks about the work before hours when an accountancy director asks for an EA', () => {
     const applied = reply(createEmptyRecord(), [], OPENING, 'How many hours per day or week should the EA work?');
-    expect(applied.assistantMessage).toMatch(/what would you like the EA to take off your plate/i);
+    expect(applied.assistantMessage).toMatch(/what would you most like your Executive Assistant to take off your plate/i);
     expect(applied.assistantMessage).not.toMatch(/how many hours/i);
     expect(applied.complete).toBe(false);
   });
@@ -158,7 +158,7 @@ describe('stage A acceptance', () => {
     expect(state.assistantMessage).toMatch(/how many meetings/i);
     expect(state.assistantMessage).not.toMatch(/what time|how many hours/i);
     state = reply(state.record, state.asked, 'Maybe six meetings a week, mostly with clients outside the firm.', 'How many hours should the chasing take?');
-    expect(state.assistantMessage).toMatch(/attend those meetings|schedule them/i);
+    expect(state.assistantMessage).toMatch(/arrange them, attend them, or both/i);
     expect(state.assistantMessage).not.toMatch(/how many hours|chasing or tracking/i);
     expect(state.record.workload.assessed.value).toBeNull();
   });
