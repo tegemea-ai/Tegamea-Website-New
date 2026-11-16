@@ -32,7 +32,7 @@ describe('conversation memory', () => {
     expect(time?.needsClarification).toBe(true);
     expect(applied.record.staffing.location.value).toBe('remote');
     expect(applied.record.workload.assessed.value).toBeNull();
-    expect(applied.assistantMessage).toMatch(/which parts of the work/i);
+    expect(applied.assistantMessage).toMatch(/what sort of business is it, and where is the work starting to build up/i);
     expect(applied.assistantMessage).not.toMatch(/how many hours|how many days|how much active working time/i);
     expect(applied.assistantMessage).not.toMatch(/2 hours per week/i);
   });

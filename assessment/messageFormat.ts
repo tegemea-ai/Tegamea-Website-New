@@ -29,7 +29,9 @@ function runs(paragraph: string): TextRun[] {
   if (!matches.length) return [{ bold: false, text: paragraph }];
   if (matches.length === 1 && matches[0].index === 0 && matches[0][0].length === paragraph.length) {
     const inner = matches[0][1];
-    const questionOnly = /\?\s*$/.test(inner) && inner.length < 280;
+    const questionOnly =
+      inner.length < 280 &&
+      (/\?\s*$/.test(inner) || /what you'd like help with\.\s*$/i.test(inner));
     if (!questionOnly) return [{ bold: false, text: inner }];
   }
   const result: TextRun[] = [];

@@ -1,5 +1,6 @@
 import React, { useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { OPENING_EXAMPLE, OPENING_QUESTION } from '../../assessment/conversation';
 import { saveOpeningNote } from '../../assessment/openingNote';
 
 const HOW_IT_WORKS = [
@@ -50,15 +51,16 @@ const AssessmentPreview: React.FC = () => {
             business needs, how much time it may require, and whether outsourcing or recruitment could be the right fit.
           </p>
 
-          <label htmlFor={fieldId} className="sr-only">
-            Describe what is taking up your time
+          <label htmlFor={fieldId} className="block text-base text-brand-navy font-light leading-relaxed mb-2">
+            {OPENING_QUESTION}
           </label>
+          <p className="text-sm text-brand-stone font-light leading-relaxed mb-3">For example: {OPENING_EXAMPLE}</p>
           <textarea
             id={fieldId}
             value={response}
             onChange={(event) => setResponse(event.target.value)}
             rows={4}
-            placeholder="For example, I'm spending too much time managing emails, coordinating projects and chasing tasks..."
+            placeholder="Write this in your own words"
             className="w-full bg-white border border-brand-navy/15 px-4 py-3 text-base text-brand-navy font-light leading-relaxed placeholder:text-brand-stone/80 focus:outline-none focus:border-brand-gold resize-y min-h-[8rem]"
           />
 

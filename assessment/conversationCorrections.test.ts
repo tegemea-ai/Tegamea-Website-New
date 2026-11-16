@@ -91,7 +91,7 @@ describe('conversational intelligence corrections', () => {
   });
 
   it('asks once when a yes or no could refer to arranging or attending', () => {
-    let state = reply(createEmptyRecord(), [], 'I need help with the diary. There are about 8 meetings a week.', 'How many hours?');
+    let state = reply(createEmptyRecord(), [], 'I need help with about 8 client meetings a week.', 'How many hours?');
     expect(state.assistantMessage).toMatch(/arrange them, attend them, or both/i);
     state = reply(state.record, state.asked, 'No.', 'Understood, so there is no diary work.');
     expect(state.record.workload.evidence.some((note) => /short reply did not identify/i.test(note.text))).toBe(true);

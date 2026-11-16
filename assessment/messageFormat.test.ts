@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assistantParagraphs, say } from './messageFormat';
+import { WELCOME } from './conversation';
 
 describe('assistant formatting', () => {
   it('bolds only the marked question and leaves context in ordinary text', () => {
@@ -19,5 +20,13 @@ describe('assistant formatting', () => {
     const paragraphs = assistantParagraphs('**<script>alert(1)</script> The whole reply should not be bold.**');
     expect(paragraphs[0][0].bold).toBe(false);
     expect(paragraphs[0][0].text).toContain('<script>alert(1)</script>');
+  });
+
+  it('bolds the opening question even though it ends with a full stop, and leaves the example plain', () => {
+    const paragraphs = assistantParagraphs(WELCOME);
+    const bold = paragraphs.flat().filter((run) => run.bold).map((run) => run.text);
+    const plain = paragraphs.flat().filter((run) => !run.bold).map((run) => run.text).join(' ');
+    expect(bold).toEqual(["Tell me a little about your business and what you'd like help with."]);
+    expect(plain).toMatch(/for example/i);
   });
 });

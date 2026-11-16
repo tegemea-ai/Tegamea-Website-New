@@ -51,6 +51,11 @@ export function meetingQuantity(text: string): QuantitySpan | null {
   const direct = quantityBefore(text, 'meetings?');
   if (direct) return direct;
   const numbered = withSmallNumbers(text);
+  const loose = numbered.match(/\b(\d{1,4})\s+(?:[a-z]+\s+){1,3}meetings?\b/i);
+  if (loose) {
+    const value = Number(loose[1]);
+    return { low: value, high: value };
+  }
   if (!/\bmeetings?\b/i.test(numbered)) return null;
   const range = numbered.match(/\b(\d{1,4})\s*(?:-|–|—|to)\s*(\d{1,4})\b(?!\s+hours?\b)/i);
   if (!range || range.index == null) return null;
@@ -60,10 +65,16 @@ export function meetingQuantity(text: string): QuantitySpan | null {
   const second = Number(range[2]);
   return { low: Math.min(first, second), high: Math.max(first, second) };
 }
+/** Reads a span already stored as "about 10–15 meetings" or "about 12 meetings". A sentence that says the share was not confirmed is not a managed count. */
 export function storedSpan(evidence: string, noun: string): QuantitySpan | null {
-  const match = evidence.match(new RegExp(`about (\\d+)(?:–(\\d+))? ${noun}`, 'i'));
-  if (!match) return null;
-  const low = Number(match[1]);
-  const high = match[2] ? Number(match[2]) : low;
-  return { low, high };
+  const sentences = evidence.split(/(?<=\.)\s+/);
+  for (const sentence of sentences) {
+    if (/not confirmed/i.test(sentence)) continue;
+    const match = sentence.match(new RegExp(`about (\\d+)(?:–(\\d+))? ${noun}`, 'i'));
+    if (!match) continue;
+    const low = Number(match[1]);
+    const high = match[2] ? Number(match[2]) : low;
+    return { low, high };
+  }
+  return null;
 }

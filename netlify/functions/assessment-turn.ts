@@ -64,7 +64,8 @@ export async function handleAssessmentRequest(request: Request, callModel: Model
   try {
     const modelOutput = coerceModelTurn(await callModel(parsed.value, apiKey));
     const latest = parsed.value.messages[parsed.value.messages.length - 1].text;
-    const applied = applyModelTurn(parsed.value.record, latest, modelOutput, parsed.value.asked);
+    const priorAssistant = [...parsed.value.messages].reverse().find((message) => message.role === 'assistant')?.text ?? '';
+    const applied = applyModelTurn(parsed.value.record, latest, modelOutput, parsed.value.asked, priorAssistant);
     return respond({ ok: true, ...applied });
   } catch (error) {
     const failure = classifyFailure(error);

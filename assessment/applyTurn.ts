@@ -1,6 +1,7 @@
 import { essentialGaps, type EssentialGap } from './coverage';
 import { recommendRole } from './role/recommend';
 import { assessWorkload } from './workload/assess';
+import { interpretReply } from './contextReply';
 import { formatSpan, meetingQuantity, quantityBefore, type QuantitySpan } from './workload/counts';
 import {
   affirmsProjects,
@@ -256,7 +257,13 @@ export function parseTurnRequest(body: unknown): { ok: true; value: TurnRequest 
   };
 }
 
-export function applyModelTurn(record: AssessmentRecord, visitorText: string, model: ModelTurn, asked: string[]): AppliedTurn {
+export function applyModelTurn(
+  record: AssessmentRecord,
+  visitorText: string,
+  model: ModelTurn,
+  asked: string[],
+  priorAssistant = '',
+): AppliedTurn {
   const next = normaliseRecord(cloneRecord(record));
   const gapBefore = essentialGaps(next, asked)[0] ?? null;
   const text = visitorText.trim();
@@ -278,6 +285,10 @@ export function applyModelTurn(record: AssessmentRecord, visitorText: string, mo
   applyWorkingTime(next, text, model, gapBefore);
   applyWorkloadEvidence(next, text, asked[asked.length - 1]);
   applyDistinctions(next, text, asked[asked.length - 1]);
+  applyContextualReply(next, text, priorAssistant);
+  noteOwnMeetingLoad(next);
+  noteDiaryIncludesArranging(next, text);
+  noteUnsureFollowUp(next, text, asked);
   applyEngagement(next, text, asked);
   applyAvailability(next, text, model, gapBefore);
   applyStaffing(next, text, model);
@@ -763,8 +774,80 @@ function minutesWereRequested(text: string): boolean {
   return /\b(prepare minutes|write the minutes|minute[- ]taking|need the minutes|minutes are required)\b/i.test(text);
 }
 
+function applyContextualReply(record: AssessmentRecord, text: string, priorAssistant: string): void {
+  const reading = interpretReply(priorAssistant, text);
+  if (!reading) return;
+  if (reading.kind === 'ambiguous') {
+    pushEvidence(record, 'The reply referred to the previous question, but that question did not offer examples to confirm.');
+    return;
+  }
+  if (reading.executive.length) {
+    record.executive.mentioned = true;
+    record.executive.responsibilities = mergeList(record.executive.responsibilities, reading.executive, false, text);
+  }
+  if (reading.project.length) {
+    record.project.mentioned = true;
+    if ((record.project.status ?? 'unknown') !== 'not_applicable') record.project.status = 'confirmed';
+    record.project.notes = mergeList(record.project.notes, reading.project, false, text);
+  }
+  pushEvidence(record, `Confirmed from the immediately previous question: ${reading.phrases.join('; ')}. Volume and complexity were not confirmed.`);
+}
+
+function noteOwnMeetingLoad(record: AssessmentRecord): void {
+  const evidence = (record.workload.evidence ?? []).map((note) => note.text).join(' ');
+  if (!/share of that volume was not confirmed/i.test(evidence)) return;
+  const duties = record.executive.responsibilities.value ?? [];
+  if (duties.some((duty) => /diary|calendar|scheduling/i.test(duty))) return;
+  record.executive.mentioned = true;
+  record.executive.responsibilities = mergeList(record.executive.responsibilities, ['Diary management'], false, evidence);
+}
+
+function noteDiaryIncludesArranging(record: AssessmentRecord, text: string): void {
+  const duties = record.executive.responsibilities.value ?? [];
+  if (!duties.some((duty) => /diary|calendar/i.test(duty))) return;
+  if (/\b(do(?:es)?\s+not|doesn't|doesnt|without|not)\b[\s\S]{0,40}\b(arrang|schedul)/i.test(text) || /\bonly attend/i.test(text)) return;
+  if (!duties.includes('Scheduling')) {
+    record.executive.responsibilities = mergeList(record.executive.responsibilities, ['Scheduling'], false, text);
+  }
+  pushEvidence(
+    record,
+    'Diary management includes arranging and coordinating the appointments. How many of the meetings the assistant manages is separate from that.',
+  );
+}
+
+function noteUnsureFollowUp(record: AssessmentRecord, text: string, asked: string[]): void {
+  const pending = asked[asked.length - 1];
+  if (pending === 'follow-up-shape' && !isUnsure(text) && /\b(several|across|clients?|projects?|individual|requests?)\b/i.test(text)) {
+    pushEvidence(record, 'Follow-up pattern described from the easier question. No time allowance has been applied.');
+    return;
+  }
+  if (!isUnsure(text)) return;
+  if (pending === 'follow-up-cadence') {
+    pushEvidence(record, 'Follow-up was confirmed. How often it happens was not known. No time allowance has been applied.');
+    addAssumption(
+      record,
+      'Follow-up stays in the brief as routine coordination. The frequency is unknown and no hours have been assumed.',
+      'workload',
+    );
+  }
+  if (pending === 'follow-up-shape') {
+    pushEvidence(record, 'The pattern of follow-up still needs validation. No time allowance has been applied.');
+  }
+}
+
+function pushEvidence(record: AssessmentRecord, note: string): void {
+  if (!Array.isArray(record.workload.evidence)) record.workload.evidence = [];
+  if (record.workload.evidence.some((item) => item.text === note)) return;
+  record.workload.evidence.push({ id: `e${record.workload.evidence.length + 1}`, text: note });
+}
+
 function meetingNote(span: QuantitySpan, text: string, pending?: string): string {
   const amount = formatSpan(span);
+  const describesOwnLoad = /\b(i have|i've got|i’ve got|i attend|i sit in)\b/i.test(text);
+  const saysArranged = /\b(arrang\w+|schedul\w+)\b/i.test(text);
+  if (describesOwnLoad && pending !== 'diary-depth' && !saysArranged) {
+    return `About ${amount} meetings a week were described, and the assistant's share of that volume was not confirmed.`;
+  }
   const frame = text.match(/\b(?:a|per|each)\s+(day|week|month)\b/i);
   if (frame) return `About ${amount} meetings a ${frame[1].toLowerCase()}.`;
   if (/\bweekly\b/i.test(text)) return `About ${amount} meetings a week.`;
@@ -846,8 +929,12 @@ function applyWorkloadEvidence(record: AssessmentRecord, text: string, pending?:
 function evidenceFromText(text: string, pending?: string): string[] {
   const notes: string[] = [];
   const emails = quantityBefore(text, 'emails?');
-  if (emails) notes.push(`Inbox volume mentioned: about ${formatSpan(emails)} emails.`);
-  else if (/\b(high[- ]volume inbox|inbox is (?:huge|busy|enormous)|lots of emails)\b/i.test(text)) {
+  if (emails) {
+    notes.push(`Inbox volume mentioned: about ${formatSpan(emails)} emails.`);
+    if (!/\b(triage|draft|repl\w*|respond|filter|flag)\b/i.test(text)) {
+      notes.push('The email count is incoming volume, not the number that need drafting.');
+    }
+  } else if (/\b(high[- ]volume inbox|inbox is (?:huge|busy|enormous)|lots of emails)\b/i.test(text)) {
     notes.push('Inbox described as high volume. No exact count was given.');
   }
   if (/\btriage\b/i.test(text)) notes.push('Inbox handling includes triage.');
@@ -858,7 +945,12 @@ function evidenceFromText(text: string, pending?: string): string[] {
   else if (/\bclient meetings?\b/i.test(text)) notes.push('Coordinates client meetings.');
   if (/\binternal\b/i.test(text) && /\bmeetings?\b/i.test(text)) notes.push('Meetings include internal meetings.');
   if (/\b(straightforward|one-to-one)\b/i.test(text) && /\bmeetings?\b/i.test(text)) notes.push('Meetings described as straightforward.');
-  if (/\b(more involved|several people|no calendar)\b/i.test(text) && /\bmeetings?\b/i.test(text)) notes.push('Meetings described as more involved.');
+  if (/\b(more involved|several people|no calendar|complex)\b/i.test(text) && /\bmeetings?\b/i.test(text)) {
+    notes.push('Meetings described as more involved.');
+  }
+  if (/\b(international|time ?zones?)\b/i.test(text) && /\bmeetings?\b/i.test(text)) {
+    notes.push('International or cross-timezone coordination was mentioned. This is a complexity signal, not a record that the coordination is complex.');
+  }
   if (/\bchas(?:e|ing)\b/i.test(text) && /\b(staff|team|colleagues|deliverables)\b/i.test(text)) {
     notes.push('Chases staff for deliverables.');
   }
@@ -902,7 +994,7 @@ function topicForGap(gap: EssentialGap | null): TopicId {
 }
 
 function isUnsure(text: string): boolean {
-  return /\b(not sure|don'?t know|do not know|no idea|hard to say)\b/i.test(text);
+  return /\b(not sure|unsure|don'?t know|do not know|no idea|hard to say)\b/i.test(text);
 }
 
 function isDecline(text: string): boolean {

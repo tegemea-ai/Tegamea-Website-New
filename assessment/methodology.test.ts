@@ -158,8 +158,8 @@ describe('stage A acceptance', () => {
     expect(state.assistantMessage).toMatch(/how many meetings/i);
     expect(state.assistantMessage).not.toMatch(/what time|how many hours/i);
     state = reply(state.record, state.asked, 'Maybe six meetings a week, mostly with clients outside the firm.', 'How many hours should the chasing take?');
-    expect(state.assistantMessage).toMatch(/arrange them, attend them, or both/i);
-    expect(state.assistantMessage).not.toMatch(/how many hours|chasing or tracking/i);
+    expect(state.assistantMessage).toMatch(/beyond arranging/i);
+    expect(state.assistantMessage).not.toMatch(/arrange them, attend them|how many hours|chasing or tracking/i);
     expect(state.record.workload.assessed.value).toBeNull();
   });
 

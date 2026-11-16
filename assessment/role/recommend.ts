@@ -42,7 +42,7 @@ export function pictureFrom(record: AssessmentRecord): WorkPicture {
   const duties = record.executive.responsibilities.value ?? [];
   const refusesAllAttendance = /the assistant does not attend the meetings/i.test(evidence);
   let attend = /meetings are attended/i.test(evidence);
-  let schedule = /meetings are scheduled/i.test(evidence);
+  let schedule = /meetings are scheduled|includes arranging/i.test(evidence);
   for (const statement of record.statements ?? []) {
     const line = statement.text;
     const refusesMinutesAttendance = /\b(?:do(?:es)?\s+not|doesn't|doesnt|do not|no need to)\b[\s\S]{0,50}\battend\b[\s\S]{0,50}\bminutes?\b/i.test(line);

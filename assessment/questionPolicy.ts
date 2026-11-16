@@ -1,4 +1,4 @@
-import { hasResponsibilities, type EssentialGap } from './coverage';
+import { hasBusinessNarrative, hasResponsibilities, type EssentialGap } from './coverage';
 import { say } from './messageFormat';
 import { pictureFrom, recommendRole } from './role/recommend';
 import type { AssessmentRecord } from './types';
@@ -132,8 +132,9 @@ export function composeAssistantReply(input: {
   let text = input.message.replace(/[^\S\n]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, 1200);
   text = text.replace(/^(?:thank you|thanks)(?:\s+for\s+(?:that|sharing(?:\s+that)?|your (?:reply|answer)))?[.!]\s+/i, '');
   const redirect = redirectReason(text, input.record, asked);
+  const repeatsOpening = /tell me a little about your business and what you'd like help with/i.test(text) && hasBusinessNarrative(input.record);
 
-  if (!text || BLOCKED_REPLY.test(text) || redirect) {
+  if (!text || BLOCKED_REPLY.test(text) || redirect || repeatsOpening) {
     text = input.complete ? SAFE_CLOSE : nextQuestion(input.record, input.gap, asked, redirect);
   } else {
     rememberKeptQuestion(text, asked);
@@ -185,9 +186,11 @@ function buildsOnUnsupported(message: string, record: AssessmentRecord): boolean
   if (/\blight\b/i.test(message) && /\b(email|inbox)\b/i.test(message)) return true;
   const picture = pictureFrom(record);
   if (/\bblended role\b/i.test(message) && picture.projectDepth !== 'management') return true;
+  const evidence = (record.workload.evidence ?? []).map((note) => note.text).join(' ');
+  if (/tell me a little about your business and what you'd like help with/i.test(message) && hasBusinessNarrative(record)) return true;
+  if (/\barrange them, attend them\b/i.test(message) && /includes arranging/i.test(evidence)) return true;
   const asksDuration = /\bhow long\b/i.test(message) && /\b(meetings?|they last|those last)\b/i.test(message);
   if (asksDuration && picture.meetingNature !== 'attend' && picture.meetingNature !== 'both') return true;
-  const evidence = (record.workload.evidence ?? []).map((note) => note.text).join(' ');
   if (/\b(straightforward to arrange|more involved)\b/i.test(message) && !schedulingAnswerCouldChange(record, evidence)) return true;
   const asksDocumentClass = /\b(simple|complex|substantial|how long)\b/i.test(message) && /\bdocuments?\b/i.test(message);
   const duties = record.executive.responsibilities.value ?? [];
@@ -208,13 +211,17 @@ function rememberKeptQuestion(message: string, asked: string[]): void {
   if (/\b(client accounts|actively manage)\b/i.test(message)) mark('project-nature');
   if (/\b(straightforward to arrange|more involved)\b/i.test(message)) mark('schedule-shape');
   if (/\bhow often does that follow-up\b/i.test(message)) mark('follow-up-cadence');
+  if (/\bbeyond arranging\b/i.test(message)) mark('meeting-extras');
+  if (/\bacross several clients or projects\b/i.test(message)) mark('follow-up-shape');
+  if (/\bwhich examples did you mean\b/i.test(message)) mark('context-clarify');
+  if (/\bwhere is the work starting to build up\b/i.test(message)) mark('support-context');
   if (/\bremotely, or need to be there\b/i.test(message)) mark('attendance-mode');
   if (/\bstill prepare minutes\b/i.test(message)) mark('minutes-clarify');
   if (/\bpart[- ]time\b/i.test(message) && /\bassistant\b/i.test(message)) mark('engagement-clarify');
 }
 
 function asksAboutTheWork(message: string): boolean {
-  return /take off your plate|which parts of the work|what would you (?:actually )?want this person to take on/i.test(message);
+  return /take off your plate|which parts of the work|what would you (?:actually )?want this person to take on|what you'd like help with|where is the work starting to build up|creating the most pressure/i.test(message);
 }
 
 function reopensClosedProjects(message: string, record: AssessmentRecord): boolean {
@@ -268,7 +275,12 @@ export function openWorkDrivers(record: AssessmentRecord, asked: string[]): stri
 
   const meetingKnown = /about \d+(?:–\d+)? meetings/i.test(evidence);
   const meetingsNamed = meetingKnown || duties.some((duty) => /diary|calendar|scheduling|client meeting/i.test(duty));
-  const activityKnown = picture.meetingNature !== 'unknown' || /the assistant does not attend the meetings|attendance in order to take minutes is not required/i.test(evidence);
+  const arrangingKnown = /includes arranging|meetings are scheduled/i.test(evidence) || picture.meetingNature === 'schedule' || picture.meetingNature === 'both';
+  const ownLoad = /share of that volume was not confirmed/i.test(evidence);
+  const activityKnown =
+    picture.meetingNature !== 'unknown' ||
+    arrangingKnown ||
+    /the assistant does not attend the meetings|attendance in order to take minutes is not required/i.test(evidence);
   if (meetingsNamed && !meetingKnown && !asked.includes('diary-depth')) pending.push('diary-depth');
 
   const books = (record.operations.notes.value ?? []).some((note) => /invoic|bookkeep/i.test(note));
@@ -277,14 +289,25 @@ export function openWorkDrivers(record: AssessmentRecord, asked: string[]): stri
   else if (books && !invoiceKnown && record.staffing.engagement?.source === 'explicit' && !asked.includes('books-return')) pending.push('books-return');
 
   const meetingsDiscussed = meetingKnown || /\bmeetings?\b/i.test(stated);
-  if (meetingsDiscussed && !activityKnown && !asked.includes('meeting-nature')) pending.push('meeting-nature');
+  if (meetingsDiscussed && !activityKnown && !ownLoad && !asked.includes('meeting-nature')) pending.push('meeting-nature');
   if (/short reply did not identify/i.test(evidence) && picture.meetingNature === 'unknown' && !asked.includes('meeting-clarify')) pending.push('meeting-clarify');
+  const extrasKnown = /\b(agendas?|meeting papers|\bpapers\b|action follow-up|following up)\b/i.test(stated);
+  const schedulingBrief = arrangingKnown || ownLoad || duties.some((duty) => /diary|calendar|scheduling/i.test(duty));
+  if (schedulingBrief && (meetingsDiscussed || meetingKnown) && !extrasKnown && !asked.includes('meeting-extras')) pending.push('meeting-extras');
   if (emailKnown && !picture.emailHandlingDescribed && !asked.includes('inbox-handling')) pending.push('inbox-handling');
   if (projectsNamed && picture.projectDepth === 'unknown' && !asked.includes('project-nature')) pending.push('project-nature');
   if (schedulingAnswerCouldChange(record, evidence) && !asked.includes('schedule-shape')) pending.push('schedule-shape');
   const attends = picture.meetingNature === 'attend' || picture.meetingNature === 'both';
   if (attends && !/attended remotely|attended in person/i.test(evidence) && !asked.includes('attendance-mode')) pending.push('attendance-mode');
-  if (followUpCouldChange(stated) && !asked.includes('follow-up-cadence')) pending.push('follow-up-cadence');
+  if (followUpCouldChange(stated) && !/how often it happens was not known/i.test(evidence) && !asked.includes('follow-up-cadence')) pending.push('follow-up-cadence');
+  if (
+    /how often it happens was not known/i.test(evidence) &&
+    !/follow-up pattern described|still needs validation/i.test(evidence) &&
+    !asked.includes('follow-up-shape')
+  ) {
+    pending.push('follow-up-shape');
+  }
+  if (/did not offer examples to confirm/i.test(evidence) && !asked.includes('context-clarify')) pending.unshift('context-clarify');
   if (
     /attendance in order to take minutes is not required/i.test(evidence) &&
     !/minute preparation was mentioned|minute preparation is not required/i.test(evidence) &&
@@ -336,7 +359,10 @@ function addressesOpenDriver(message: string, record: AssessmentRecord, asked: s
   if (pending.includes('meeting-clarify') && /\b(arrange|attend|schedule)\b/i.test(message)) return true;
   if (pending.includes('schedule-shape') && /\b(straightforward|involved|complex|internal|external)\b/i.test(message)) return true;
   if (pending.includes('attendance-mode') && /\b(remote|in person|on-?site|video)\b/i.test(message)) return true;
-  if (pending.includes('follow-up-cadence') && /\b(often|week|occasional|daily|regular)\b/i.test(message)) return true;
+  if (pending.includes('follow-up-cadence') && /\b(often|week|occasional|daily|regular|unsure|not sure|don't know)\b/i.test(message)) return true;
+  if (pending.includes('follow-up-shape') && /\b(client|project|individual|request|unsure|not sure)\b/i.test(message)) return true;
+  if (pending.includes('meeting-extras') && /\b(agenda|paper|follow|action|minute|attend)\b/i.test(message)) return true;
+  if (pending.includes('context-clarify') && /\b(inbox|diary|meeting|client|document|follow|except|first)\b/i.test(message)) return true;
   if (pending.includes('minutes-clarify') && /\b(minutes|notes|actions)\b/i.test(message)) return true;
   if (pending.includes('minutes-depth') && /\bminutes\b/i.test(message)) return true;
   if (pending.includes('project-nature') && /\b(accounts?|manage|projects?|chas\w*)\b/i.test(message)) return true;
@@ -353,6 +379,10 @@ function nextQuestion(record: AssessmentRecord, gap: EssentialGap | null, asked:
     asked.push('peak');
     return PEAK_FOLLOW_UP;
   }
+  if (openWorkDrivers(record, asked).includes('context-clarify')) {
+    asked.push('context-clarify');
+    return say({ question: 'Which examples did you mean?' });
+  }
   if (!hasResponsibilities(record)) return supportQuestion(record, asked);
   const follow = takeFollowUp(record, asked);
   if (follow) return follow;
@@ -365,6 +395,10 @@ function nextQuestion(record: AssessmentRecord, gap: EssentialGap | null, asked:
 }
 
 function supportQuestion(record: AssessmentRecord, asked: string[]): string {
+  if (!hasBusinessNarrative(record) && !asked.includes('support-context') && record.executive.requestedRole?.value !== 'Executive Assistant') {
+    asked.push('support-context');
+    return say({ question: "What sort of business is it, and where is the work starting to build up?" });
+  }
   if (!asked.includes('support')) {
     asked.push('support');
     if (record.executive.requestedRole?.value === 'Executive Assistant') {
@@ -373,13 +407,16 @@ function supportQuestion(record: AssessmentRecord, asked: string[]): string {
         after: 'For example, managing your inbox and diary, coordinating meetings, preparing documents or following up on actions.',
       });
     }
-    return say({ question: 'Which parts of the work are taking the time?' });
+    return say({ question: 'Which parts of the work are creating the most pressure?' });
   }
   if (!asked.includes('support-followup')) asked.push('support-followup');
-  return say({
-    before: 'That hour figure is only a starting estimate.',
-    question: 'What would you actually want this person to take on?',
-  });
+  if (record.workload.requestedTime.value || record.workload.activeTime.value) {
+    return say({
+      before: 'That hour figure is only a starting estimate.',
+      question: 'What would you want this person to take on?',
+    });
+  }
+  return say({ question: 'What would you want this person to take on?' });
 }
 
 /** Enough is known to stop: the main duties are named and each one has been followed up or already described. */
@@ -397,15 +434,14 @@ function takeFollowUp(record: AssessmentRecord, asked: string[]): string | null 
   asked.push(next);
   if (next === 'inbox-depth') {
     return say({
-      before: 'You mentioned inbox management.',
       question: 'Roughly how many emails come in, and what would the assistant need to do with them?',
-      after: 'For example triage, drafting, answering independently, or following things up. A rough sense is enough.',
+      after: 'For example triage, drafting, answering independently, or following things up. A rough sense is enough, and the number coming in is not the number that need drafting.',
     });
   }
   if (next === 'inbox-handling') {
     const count = (record.workload.evidence ?? []).map((note) => note.text).join(' ').match(/about (\d+(?:–\d+)?) emails/i);
     return say({
-      before: count ? `You mentioned about ${count[1]} emails.` : 'You mentioned the inbox.',
+      before: count ? `About ${count[1]} come in.` : undefined,
       question: 'What would the assistant need to do with them: triage, draft replies, answer independently, follow things up, or some combination?',
       after: 'The number alone does not determine the workload. No time allowance is applied unless an approved benchmark matches.',
     });
@@ -413,8 +449,18 @@ function takeFollowUp(record: AssessmentRecord, asked: string[]): string | null 
   if (next === 'diary-depth') {
     const diary = (record.executive.responsibilities.value ?? []).some((duty) => /diary|calendar|scheduling/i.test(duty));
     return say({
-      before: diary ? 'You mentioned diary management.' : 'You mentioned the meetings.',
-      question: 'Roughly how many meetings are in a typical week?',
+      question: diary
+        ? 'Roughly how many meetings does that diary management cover in a typical week?'
+        : 'Roughly how many meetings are in a typical week?',
+    });
+  }
+  if (next === 'meeting-extras') {
+    const stated = (record.statements ?? []).map((statement) => statement.text).join('\n');
+    const international = /\b(international|time ?zones?)\b/i.test(stated);
+    const role = record.executive.requestedRole?.value === 'Executive Assistant' ? 'your EA' : 'the person supporting you';
+    return say({
+      before: international ? "That's a busy diary, particularly with international meetings and different time zones." : undefined,
+      question: `Beyond arranging those meetings, would ${role} also help with agendas, meeting papers or following up on actions?`,
     });
   }
   if (next === 'meeting-nature') {
@@ -440,7 +486,17 @@ function takeFollowUp(record: AssessmentRecord, asked: string[]): string | null 
   if (next === 'follow-up-cadence') {
     return say({
       question: 'How often does that follow-up come up in a typical week?',
+      after: 'A rough sense is enough. If you are unsure, say so.',
     });
+  }
+  if (next === 'follow-up-shape') {
+    const role = record.executive.requestedRole?.value === 'Executive Assistant' ? 'your EA' : 'the support';
+    return say({
+      question: `Would ${role} be keeping track of actions across several clients or projects, or mainly following up on individual requests as they arise?`,
+    });
+  }
+  if (next === 'context-clarify') {
+    return say({ question: 'Which examples did you mean?' });
   }
   if (next === 'minutes-clarify') {
     const stated = (record.statements ?? []).map((statement) => statement.text).join('\n');
