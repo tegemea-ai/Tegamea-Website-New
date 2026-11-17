@@ -44,7 +44,7 @@ describe('live bookkeeping conversation', () => {
     expect(state.record.workload.assessment?.complete).toBe(false);
     expect(state.record.workload.assessed.value).toBeNull();
     expect(state.record.workload.agreed.value).toBeNull();
-    expect(recommendRole(state.record)?.role).not.toBe('Blended arrangement');
+    expect(recommendRole(state.record)?.role).toBe('Executive Assistant');
     expect(state.assistantMessage).not.toMatch(/£/);
   });
 });

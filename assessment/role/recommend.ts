@@ -1,6 +1,7 @@
 import { hasResponsibilities } from '../coverage';
 import type { AssessmentRecord } from '../types';
 import { statedWorkingTimeDetail } from '../workingTime';
+import { hypothesisFrom, type PurposeArea, type SupportHypothesis } from './hypothesis';
 
 export type RecommendedRole = 'Executive Assistant' | 'Project Support' | 'Operations Coordinator' | 'Blended arrangement';
 export type MeetingNature = 'attend' | 'schedule' | 'both' | 'unknown';
@@ -86,25 +87,21 @@ export function pictureFrom(record: AssessmentRecord): WorkPicture {
 export function recommendRole(record: AssessmentRecord): RoleRecommendation | null {
   if (!hasResponsibilities(record)) return null;
   const picture = pictureFrom(record);
+  const hypothesis = hypothesisFrom(record);
+  const finance = picture.specialistFinance;
+  const role = chooseRole(hypothesis, finance);
+  if (!role) return null;
   const requested = record.executive.requestedRole?.value;
-  const responsibilities = responsibilityLines(record, picture);
-  const role = chooseRole(picture, requested);
-  const coordination = picture.projectDepth === 'routine' || responsibilities.some((line) => /client|meeting|follow-up/i.test(line));
-  const headline =
-    role === 'Executive Assistant' && coordination
-      ? 'Experienced Executive Assistant, including client and project coordination'
-      : role === 'Blended arrangement'
-        ? 'Executive support together with substantive project management'
-        : role;
+  const responsibilities = responsibilityLines(record, picture, hypothesis);
   return {
     role,
-    headline,
-    explanation: explain(role, requested, responsibilities, picture),
+    headline: headlineFor(role, hypothesis),
+    explanation: explain(role, requested, responsibilities, picture, hypothesis),
     responsibilities,
     requestedHours: requestedHours(record),
     workloadStatement: workloadStatement(record),
     staffing: staffingConsiderations(record),
-    assumptions: assumptions(record, picture),
+    assumptions: assumptions(record, picture, hypothesis),
     assessmentComplete: record.workload.assessment?.complete === true,
   };
 }
@@ -128,25 +125,53 @@ export function clientResult(record: AssessmentRecord): { headline: string; stat
   return { headline: recommendation.headline, status, sections };
 }
 
-function chooseRole(picture: WorkPicture, requested: string | null | undefined): RecommendedRole {
-  const executiveShape = picture.executiveAdmin || picture.projectDepth === 'routine' || requested === 'Executive Assistant';
-  if (picture.projectDepth === 'management' && (picture.executiveAdmin || requested === 'Executive Assistant')) return 'Blended arrangement';
-  if (picture.projectDepth === 'management') return 'Project Support';
-  if (executiveShape) return 'Executive Assistant';
-  if (picture.specialistFinance) return 'Operations Coordinator';
+function chooseRole(hypothesis: SupportHypothesis, finance: boolean): RecommendedRole | null {
+  if (hypothesis.primary === 'uncertain') return finance ? 'Operations Coordinator' : null;
+  if (hypothesis.blend) return 'Blended arrangement';
+  if (hypothesis.primary === 'project') return 'Project Support';
+  if (hypothesis.primary === 'operations') return 'Operations Coordinator';
   return 'Executive Assistant';
 }
 
-function explain(role: RecommendedRole, requested: string | null | undefined, responsibilities: string[], picture: WorkPicture): string {
+function headlineFor(role: RecommendedRole, hypothesis: SupportHypothesis): string {
+  if (role === 'Executive Assistant' && (hypothesis.chaseAlongsideExecutive || hypothesis.project > 0)) {
+    return 'Experienced Executive Assistant, including client and project coordination';
+  }
+  if (role === 'Executive Assistant') return 'Experienced Executive Assistant';
+  if (role === 'Project Support' && hypothesis.autonomy === 'direct') return 'Project management support';
+  if (role === 'Project Support') return 'Project Coordinator / Project Support';
+  if (role === 'Operations Coordinator') return 'Operations Coordinator';
+  if (hypothesis.blend?.includes('operations') && hypothesis.blend.includes('project')) {
+    return 'Project and operations coordination in one remit';
+  }
+  return 'Executive and project support in one remit';
+}
+
+function explain(
+  role: RecommendedRole,
+  requested: string | null | undefined,
+  responsibilities: string[],
+  picture: WorkPicture,
+  hypothesis: SupportHypothesis,
+): string {
   const work = responsibilities.join('; ');
   if (role === 'Blended arrangement') {
-    return `An Executive Assistant can cover executive administration, client coordination, routine follow-up, action tracking and stakeholder communication. ${work}. The evidence also describes substantive project management, so the leading arrangement is executive support together with that project responsibility.`;
+    const remit = blendNames(hypothesis.blend);
+    return `The brief covers ${remit}: ${work}. That is one blended remit. It does not decide whether one person or more than one person is needed, and staffing is left for later.`;
   }
   if (role === 'Project Support') {
-    return `The work described is substantive project management: ${work}. That is the leading role. Routine chasing on its own would have stayed inside an Executive Assistant brief.`;
+    const asked = requested === 'Executive Assistant' ? 'You asked for an Executive Assistant. The requested title does not decide the role. ' : '';
+    const seniority =
+      hypothesis.autonomy === 'direct'
+        ? 'They would direct delivery or manage the people doing the work, so this sits above day-to-day coordination.'
+        : 'This is read as coordination. Directing delivery or managing project staff would change the seniority, not the purpose.';
+    return `${asked}The primary purpose is coordinating project and client delivery: ${work}. ${seniority}`;
   }
   if (role === 'Operations Coordinator') {
-    return `The brief is ${work}. That is one role. Bookkeeping is specialist work, it has no approved hour rate, and on this evidence it does not require a second person.`;
+    if (picture.specialistFinance && hypothesis.operations < 3) {
+      return `The brief is ${work}. That is one role. Bookkeeping is specialist work, it has no approved hour rate, and on this evidence it does not require a second person.`;
+    }
+    return `The primary purpose is recurring operational coordination: ${work}. This is one remit. It does not decide how many people are needed.`;
   }
   const asked = requested === 'Executive Assistant' ? 'You asked for an Executive Assistant. ' : '';
   const finance = picture.specialistFinance
@@ -155,24 +180,28 @@ function explain(role: RecommendedRole, requested: string | null | undefined, re
   return `${asked}The described work — ${work} — sits within an experienced Executive Assistant brief. Routine client and project coordination stays inside that brief. A second role is not indicated.${finance}`;
 }
 
-function responsibilityLines(record: AssessmentRecord, picture: WorkPicture): string[] {
+function blendNames(blend: PurposeArea[] | null): string {
+  const names = new Set(blend ?? []);
+  if (names.has('project') && names.has('operations')) return 'project coordination and recurring operational work';
+  if (names.has('executive') && names.has('operations')) return 'executive support and operational coordination';
+  return 'executive support and project coordination';
+}
+
+function responsibilityLines(record: AssessmentRecord, picture: WorkPicture, hypothesis: SupportHypothesis): string[] {
   const duties = record.executive.responsibilities.value ?? [];
   const evidence = (record.workload.evidence ?? []).map((note) => note.text).join(' ');
-  const lines: string[] = [];
-  if (duties.includes('Inbox management') || /about \d+ emails/i.test(evidence)) lines.push('Inbox management');
-  if (duties.some((duty) => /diary|calendar|scheduling/i.test(duty))) lines.push('Diary and scheduling');
-  if (/about \d+ meetings/i.test(evidence) || duties.some((duty) => /meeting/i.test(duty))) {
+  const lines = [...hypothesis.responsibilities];
+  const executiveMeetings = !hypothesis.projectMeetings || hypothesis.ownDiary;
+  const meetingsNamed = /about \d+ meetings/i.test(evidence) || duties.some((duty) => /meeting/i.test(duty));
+  if (executiveMeetings && meetingsNamed && !lines.some((line) => /meetings/i.test(line))) {
     if (picture.meetingNature === 'attend') lines.push('Attending meetings');
     else if (picture.meetingNature === 'schedule') lines.push('Scheduling meetings');
     else if (picture.meetingNature === 'both') lines.push('Attending and scheduling meetings');
     else lines.push('Meetings, still to be distinguished between attending and scheduling');
   }
-  if (duties.includes('Sending documents')) lines.push('Sending documents to clients');
-  if (duties.includes('Document preparation')) lines.push('Document preparation');
-  if (picture.projectDepth === 'management') lines.push('Active project management');
-  else if (picture.projectDepth === 'routine') lines.push('Routine client follow-up and action tracking');
-  const finance = (record.operations.notes.value ?? []).filter((note) => /bookkeep|invoic/i.test(note));
-  if (finance.length) lines.push(finance.join(', '));
+  if (picture.projectDepth === 'management' && !lines.some((line) => /direct|project management|projects/i.test(line))) {
+    lines.push('Directing project delivery');
+  }
   return lines.length ? lines : ['The responsibilities named in the conversation'];
 }
 
@@ -210,28 +239,18 @@ function staffingConsiderations(record: AssessmentRecord): string {
   return `${preference}Outsourced support and employment can both suit this brief. Which fits depends on the weekly range, which is not complete yet. This is not a price.`;
 }
 
-function assumptions(record: AssessmentRecord, picture: WorkPicture): string[] {
+function assumptions(record: AssessmentRecord, picture: WorkPicture, hypothesis: SupportHypothesis): string[] {
   const evidence = (record.workload.evidence ?? []).map((note) => note.text).join(' ');
-  const items: string[] = [];
-  if (/about \d+ meetings/i.test(evidence) && picture.meetingNature === 'unknown') {
+  const items = [...hypothesis.uncertainties];
+  if (/about \d+ meetings/i.test(evidence) && picture.meetingNature === 'unknown' && !hypothesis.projectMeetings) {
     items.push('Whether the meetings are attended or scheduled is still open. That can change the workload reading and the coverage.');
   }
   if (/about \d+ emails/i.test(evidence) && !picture.emailHandlingDescribed) {
     items.push('What the assistant has to do with the emails is still open. The number alone does not determine the workload, and no time allowance is applied unless an approved benchmark matches.');
   }
-  const projectsOpen = (record.project.status ?? 'unknown') !== 'not_applicable' && record.project.mentioned && picture.projectDepth === 'unknown';
-  if (projectsOpen) {
-    items.push('Whether the client work is accounts to track or projects to manage is still open. That can change the role.');
-  }
-  if (picture.projectDepth === 'routine') {
-    items.push('Chasing and action tracking are read as routine coordination. Substantive project management would change the role.');
-  }
-  if (picture.specialistFinance) {
-    items.push('Bookkeeping or invoicing stays outside the weekly range because there is no approved hour rate.');
-  }
   const hoursKnown = Boolean(record.workload.requestedTime.value ?? record.workload.activeTime.value);
   if (hoursKnown && !record.availability.window.value && !record.availability.workingDays.value) {
     items.push('Availability has not been discussed. Active working hours are separate from being reachable throughout the day.');
   }
-  return items;
+  return [...new Set(items)];
 }

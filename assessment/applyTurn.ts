@@ -418,13 +418,15 @@ function applyBusiness(record: AssessmentRecord, text: string, model: ModelTurn)
 }
 
 function applyLabels(record: AssessmentRecord, text: string, model: ModelTurn): void {
-  const executive = unique([...labelsInText(text, EXECUTIVE), ...modelLabels(model.executive.responsibilities, EXECUTIVE, text)]).filter(
-    (label) => label !== 'Meeting minutes' || minutesWereRequested(text),
-  );
+  const projectMeeting = /\bproject\s+meetings?\b/i.test(text) && /\b(arrang\w+|schedul\w+)\b/i.test(text);
+  const executive = unique([...labelsInText(text, EXECUTIVE), ...modelLabels(model.executive.responsibilities, EXECUTIVE, text)])
+    .filter((label) => label !== 'Meeting minutes' || minutesWereRequested(text))
+    .filter((label) => label !== 'Scheduling' || !projectMeeting || /\bdiar/i.test(text));
   if (executive.length) {
     record.executive.mentioned = true;
     record.executive.responsibilities = mergeList(record.executive.responsibilities, executive, model.executive.correction, text);
   }
+  dropWithdrawnExecutive(record, text);
   if (declinesProjects(text)) {
     record.project.status = 'not_applicable';
     record.project.mentioned = false;
@@ -437,9 +439,11 @@ function applyLabels(record: AssessmentRecord, text: string, model: ModelTurn): 
       record.project.status = 'confirmed';
       record.project.notes = mergeList(record.project.notes, project, model.project.correction, text);
     }
-    const count = text.match(/\b(\d{1,3})\s+(?:(?:active|client|live)\s+)?projects?\b/i);
+    const count = text.match(
+      /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,3})\b(?:\s+\w+){0,4}\s+(projects?|accounts?)\b/i,
+    );
     if (count && !declinesProjects(text)) {
-      record.project.activeProjects = explicitFact(`${count[1]} projects`, text, Boolean(record.project.activeProjects.value));
+      record.project.activeProjects = explicitFact(`${count[1]} ${count[2].toLowerCase()}`, text, Boolean(record.project.activeProjects.value));
     }
   }
   const operations = unique([...labelsInText(text, OPERATIONS), ...modelLabels(model.operations.notes, OPERATIONS, text)]);
@@ -589,6 +593,26 @@ function replaceText<T extends string>(current: Fact<T>, value: string | null, s
   return source === 'inferred' ? inferredFact(value as T, evidence, revised) : explicitFact(value as T, evidence, revised);
 }
 
+function dropWithdrawnExecutive(record: AssessmentRecord, text: string): void {
+  const duties = record.executive.responsibilities.value ?? [];
+  if (!duties.length) return;
+  const mentionsDuty = (pattern: RegExp) => pattern.test(text);
+  const withdrawing =
+    (/\b(ignore|drop|remove)\b/i.test(text) && mentionsDuty(/\b(inbox|emails?|diar\w*|calendar)\b/i)) ||
+    (/\b(inbox|emails?|diar\w*|calendar)\b/i.test(text) && /\b(no longer|not required|isn't required|is not required)\b/i.test(text));
+  if (!withdrawing) return;
+  const drop = new Set<string>();
+  if (/\binbox\b|\bemails?\b/i.test(text)) drop.add('Inbox management');
+  if (/\bdiar|\bcalendar\b/i.test(text)) {
+    drop.add('Diary management');
+    drop.add('Calendar management');
+    drop.add('Scheduling');
+  }
+  const remaining = duties.filter((duty) => !drop.has(duty));
+  if (remaining.length === duties.length) return;
+  record.executive.responsibilities = explicitFact(remaining, text, true);
+}
+
 function mergeList(current: Fact<string[]>, labels: string[], correction: boolean, evidence: string): Fact<string[]> {
   if (current.value?.length && current.source === 'explicit' && correction) return explicitFact(labels, evidence, true);
   const merged = unique([...(current.value ?? []), ...labels]);
@@ -614,6 +638,7 @@ const EXECUTIVE: Signal[] = [
 
 const PROJECT: Signal[] = [
   { label: 'Project support', pattern: /\bprojects?\b/i },
+  { label: 'Project meeting coordination', pattern: /\bproject meetings?\b/i },
   { label: 'Milestone tracking', pattern: /\bmilestones?\b/i },
   { label: 'Action tracking', pattern: /\bactions?\b/i },
   { label: 'Stakeholder coordination', pattern: /\bstakeholders?\b/i },
