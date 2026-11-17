@@ -24,6 +24,10 @@ export interface SupportHypothesis {
   uncertainties: string[];
   /** In the order they should be asked. Empty when none would change the reading. */
   materialQuestions: string[];
+  /** Follow-up is already part of an understood brief. Its frequency is variable and is not a question. */
+  followUpInherent: boolean;
+  /** A bare mention of chasing, where who it covers could still change the role. */
+  followUpShapeOpen: boolean;
 }
 
 const SUBSTANTIAL = 3;
@@ -127,6 +131,21 @@ export function hypothesisFrom(record: AssessmentRecord): SupportHypothesis {
   if (chaseAlongsideExecutive) {
     uncertainties.push('Chasing and action tracking are part of this executive brief. A separate project-delivery responsibility would change the recommendation.');
   }
+  const followUpNamed = chaseWords || actions || /\bfollow(?:ing|ed)?\s+up\b|\bfollow[- ]ups?\b/i.test(spoken);
+  const spreadKnown =
+    projectPurpose ||
+    accounts ||
+    Boolean(scale) ||
+    projectMeetings ||
+    projectComms ||
+    operationsScore >= SUBSTANTIAL ||
+    /\b(clients?\s+and\s+(?:staff|the team|suppliers?)|between clients|several clients|multiple (?:clients|projects)|suppliers?)\b/i.test(spoken);
+  const followUpInherent =
+    followUpNamed && (spreadKnown || describedAsRoutine || primary === 'project' || primary === 'operations' || Boolean(blend?.includes('project')));
+  const cadenceKnown = /\b(occasional(?:ly)?|each week|every week|weekly|daily|regularly|rarely|once a|few times|most days)\b/i.test(spoken);
+  if (followUpNamed && !cadenceKnown) {
+    uncertainties.push('Follow-up is part of the brief. Its frequency is variable and no hours have been assumed.');
+  }
 
   const systems = namedSystems(text);
   return {
@@ -162,6 +181,8 @@ export function hypothesisFrom(record: AssessmentRecord): SupportHypothesis {
     systems,
     uncertainties,
     materialQuestions,
+    followUpInherent,
+    followUpShapeOpen: followUpNamed && !followUpInherent,
   };
 }
 

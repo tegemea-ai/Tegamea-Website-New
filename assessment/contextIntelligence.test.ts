@@ -148,21 +148,17 @@ describe('diary, complexity and uncertainty', () => {
     expect(state.assistantMessage).not.toMatch(/straightforward to arrange/i);
   });
 
-  it('keeps follow-up when the frequency is unknown and does not invent hours', () => {
-    let state = reply(
+  it('keeps follow-up when the clients and staff are already named and does not ask for a frequency', () => {
+    const state = reply(
       createEmptyRecord(),
       [],
       'I need someone to follow up with clients and staff on outstanding actions.',
-      'How many hours should that take?',
+      'How often does that follow-up come up, and how many hours should that take?',
     );
-    expect(state.assistantMessage).toMatch(/how often does that follow-up/i);
-    state = reply(state.record, state.asked, "I'm unsure.", 'Could you estimate the minutes?');
-    expect(state.record.workload.evidence.some((note) => /how often it happens was not known/i.test(note.text))).toBe(true);
-    expect(state.record.assumptions.some((item) => /no hours have been assumed/i.test(item.text))).toBe(true);
-    expect(state.assistantMessage).toMatch(/across several clients or projects/i);
+    expect(state.assistantMessage).not.toMatch(/how often|across several clients|how regularly|\d+\s*minutes|£/i);
+    expect(state.record.project.notes.value).toEqual(expect.arrayContaining(['Action tracking']));
     expect(state.record.workload.assessed.value).toBeNull();
     expect(state.record.workload.agreed.value).toBeNull();
-    expect(state.assistantMessage).not.toMatch(/\d+\s*minutes|£/);
   });
 
   it('does not treat an email count as the number that need drafting', () => {

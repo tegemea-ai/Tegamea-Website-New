@@ -6,7 +6,7 @@ import type { AssessmentRecord } from './types';
 import { storedSpan } from './workload/counts';
 
 const SAFE_CLOSE =
-  "That's enough to set out a leading recommendation. A complete assessment still needs an indicative weekly workload range, and that range is outstanding where an approved benchmark does not yet apply. I haven't calculated a cost.";
+  "That's enough to set out a leading recommendation. Where no approved benchmark covers the remaining work, the weekly range is not calculated, and no hours have been assumed. I haven't calculated a cost.";
 
 const BLOCKED_REPLY = /£|\$\s?\d|\bper hour\b|\bi recommend\b|\brecruitment fee\b|\bon-?costs?\b|\bsalary\b/i;
 
@@ -187,8 +187,10 @@ function buildsOnUnsupported(message: string, record: AssessmentRecord): boolean
   if (/\boperational coordination\b/i.test(message) && !generalOps) return true;
   if (record.staffing.engagement?.source === 'provisional' && /\b(throughout the year|weekly pattern|varies throughout)\b/i.test(message)) return true;
   if (/\blight\b/i.test(message) && /\b(email|inbox)\b/i.test(message)) return true;
+  if (asksRoutineFrequency(message)) return true;
   const picture = pictureFrom(record);
   const hypothesis = hypothesisFrom(record);
+  if (hypothesis.followUpInherent && /\bacross several clients or projects|individual requests as they arise/i.test(message)) return true;
   if (/\bblended role\b/i.test(message) && picture.projectDepth !== 'management' && !hypothesis.blend) return true;
   const evidence = (record.workload.evidence ?? []).map((note) => note.text).join(' ');
   if (/tell me a little about your business and what you'd like help with/i.test(message) && hasBusinessNarrative(record)) return true;
@@ -216,7 +218,6 @@ function rememberKeptQuestion(message: string, asked: string[]): void {
   if (/\bcoordinate the work, or also direct\b/i.test(message)) mark('project-autonomy');
   if (/\bhow many client accounts or projects are active\b/i.test(message)) mark('project-scale');
   if (/\b(straightforward to arrange|more involved)\b/i.test(message)) mark('schedule-shape');
-  if (/\bhow often does that follow-up\b/i.test(message)) mark('follow-up-cadence');
   if (/\bbeyond arranging\b/i.test(message)) mark('meeting-extras');
   if (/\bacross several clients or projects\b/i.test(message)) mark('follow-up-shape');
   if (/\bwhich examples did you mean\b/i.test(message)) mark('context-clarify');
@@ -320,24 +321,7 @@ export function openWorkDrivers(record: AssessmentRecord, asked: string[]): stri
   if (schedulingAnswerCouldChange(record, evidence) && !asked.includes('schedule-shape') && !projectMeetingsAreTheWork) pending.push('schedule-shape');
   const attends = picture.meetingNature === 'attend' || picture.meetingNature === 'both';
   if (attends && !/attended remotely|attended in person/i.test(evidence) && !asked.includes('attendance-mode')) pending.push('attendance-mode');
-  if (
-    followUpCouldChange(stated) &&
-    !projectMeetingsAreTheWork &&
-    hypothesis.primary !== 'project' &&
-    !/how often it happens was not known/i.test(evidence) &&
-    !asked.includes('follow-up-cadence')
-  ) {
-    pending.push('follow-up-cadence');
-  }
-  if (
-    /how often it happens was not known/i.test(evidence) &&
-    !projectMeetingsAreTheWork &&
-    hypothesis.primary !== 'project' &&
-    !/follow-up pattern described|still needs validation/i.test(evidence) &&
-    !asked.includes('follow-up-shape')
-  ) {
-    pending.push('follow-up-shape');
-  }
+  if (hypothesis.followUpShapeOpen && !asked.includes('follow-up-shape')) pending.push('follow-up-shape');
   if (/did not offer examples to confirm/i.test(evidence) && !asked.includes('context-clarify')) pending.unshift('context-clarify');
   if (
     /attendance in order to take minutes is not required/i.test(evidence) &&
@@ -371,10 +355,11 @@ function schedulingAnswerCouldChange(record: AssessmentRecord, evidence: string)
   return true;
 }
 
-function followUpCouldChange(stated: string): boolean {
-  const named = /\b(chas(?:e|ing)|follow(?:ing|ed)?\s+up|follow[- ]ups?|action tracking)\b/i.test(stated);
-  if (!named) return false;
-  return !/\b(occasional(?:ly)?|each week|every week|weekly|daily|regularly|rarely|once a|few times|most days)\b/i.test(stated);
+function asksRoutineFrequency(message: string): boolean {
+  return (
+    /\b(how often|how regularly|how frequent|what frequency|estimate how regularly)\b/i.test(message) &&
+    /\b(follow[- ]?ups?|actions?|chas\w*|updat\w+|reports?)\b/i.test(message)
+  );
 }
 
 function addressesOpenDriver(message: string, record: AssessmentRecord, asked: string[]): boolean {

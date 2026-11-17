@@ -35,7 +35,7 @@ export interface ClientSection {
 }
 
 const OUTSTANDING_RANGE =
-  'This is a leading recommendation, not a complete assessment. A complete assessment includes an indicative weekly workload range built from approved benchmarks. Where that range is missing, the gap is outstanding work, and no hours have been assumed.';
+  'This role recommendation is separate from the workload reading. A complete weekly range is produced only where an approved benchmark applies. Work with no approved benchmark stays unquantified, and no hours have been assumed. That is a limit of the current workload methodology.';
 
 export function pictureFrom(record: AssessmentRecord): WorkPicture {
   const text = (record.statements ?? []).map((statement) => statement.text).join('\n');
@@ -121,7 +121,7 @@ export function clientResult(record: AssessmentRecord): { headline: string; stat
   }
   const status = recommendation.assessmentComplete
     ? 'The role and the weekly range below are the indicative assessment.'
-    : 'The role below is the leading recommendation. The weekly workload range is still incomplete.';
+    : 'The role below is the leading recommendation. Any hours shown are a partial workload reading, not a complete weekly requirement.';
   return { headline: recommendation.headline, status, sections };
 }
 
@@ -216,7 +216,7 @@ function workloadStatement(record: AssessmentRecord): string {
   const reading = record.workload.assessment;
   if (reading?.complete && reading.summary) return reading.summary;
   if (reading?.summary) return `${reading.summary} ${OUTSTANDING_RANGE}`;
-  return `No indicative weekly range is available yet, because no approved benchmark matches the work described, and no allowance has been invented. ${OUTSTANDING_RANGE}`;
+  return `No weekly range has been calculated, because no approved benchmark matches the work described, and no allowance has been invented. ${OUTSTANDING_RANGE}`;
 }
 
 function staffingConsiderations(record: AssessmentRecord): string {

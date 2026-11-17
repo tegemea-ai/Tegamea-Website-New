@@ -25,7 +25,8 @@ describe('architecture firm role reading', () => {
     expect(recommendation?.headline).toMatch(/Experienced Executive Assistant, including client and project coordination/);
     expect(recommendation?.explanation).not.toMatch(/blended role|second role is indicated/i);
     expect(recommendation?.assessmentComplete).toBe(false);
-    expect(recommendation?.workloadStatement).toMatch(/not a complete assessment/i);
+    expect(recommendation?.workloadStatement).toMatch(/limit of the current workload methodology/i);
+    expect(recommendation?.workloadStatement).toMatch(/no hours have been assumed/i);
     expect(recommendation?.workloadStatement).not.toMatch(/\blight\b|£/);
     expect(recommendation?.responsibilities).toEqual(
       expect.arrayContaining(['Inbox management', 'Sending documents to clients', 'Routine client follow-up and action tracking']),
@@ -65,7 +66,7 @@ describe('architecture firm role reading', () => {
     const state = reply(createEmptyRecord(), [], ARCHITECTURE, 'Noted.');
     const view = clientResult(state.record);
     expect(view?.headline).toMatch(/Executive Assistant/);
-    expect(view?.status).toMatch(/weekly workload range is still incomplete/i);
+    expect(view?.status).toMatch(/partial workload reading, not a complete weekly requirement/i);
     const titles = view?.sections.map((section) => section.title);
     expect(titles).toEqual(
       expect.arrayContaining(['Why this role', 'Main responsibilities', 'Weekly workload', 'Hours you asked for', 'Staffing', 'Assumptions that could change this']),
